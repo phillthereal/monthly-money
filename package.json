@@ -1,0 +1,8 @@
+{
+  "name": "monthly-money",
+  "version": "5.0.0",
+  "private": true,
+  "description": "A single-file budgeting app for credit-card cycles, shared bills and savings goals. Your data stays in your browser.",
+  "scripts": { "test": "node tests/run.js" },
+  "devDependencies": { "jsdom": "^29.1.1" }
+}

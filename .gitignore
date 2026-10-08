@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+
+# Personal data: never commit backups or starter files
+monthly-money-*.json
+my-*.json
+*.bak
+
+# Local scratch
+.DS_Store
+.env
+shots*/
+review/
