@@ -118,7 +118,8 @@ input::placeholder{color:var(--mute);opacity:1}
 <div class="mute" style="padding:8px 0">Tap a dot to move a line to the next group.</div>
 </div></section>
 <section data-t="amex" hidden><div class="pad">
-<div class="sec"><h2>Amex split</h2><div class="hdr"><span>Category</span><span>Planned</span><span>Spent</span></div><div id="amex"></div><div id="amexsum" class="mute"></div><div class="row" style="margin:10px 0 0"><button id="csv">Import Amex CSV</button></div><input type="file" id="fc" accept=".csv,text/csv" hidden><div class="mute">Download a CSV from Statements &amp; activity on the Amex website. Charges come in unassigned; payments and refunds are skipped; anything already imported is skipped too.</div></div>
+<div class="sec"><h2>Amex split</h2><div class="hdr"><span>Category</span><span>Planned</span><span>Spent</span></div><div id="amex"></div><div id="amexsum" class="mute"></div><div class="row" style="margin:10px 0 0"><button id="csv">Import Amex CSV</button></div><input type="file" id="fc" accept=".csv,text/csv" hidden><div class="mute">Download a CSV from Statements &amp; activity on the Amex website. Charges come in unassigned (pick a category for each under Purchases below); payments and refunds are skipped; anything already imported is skipped too.</div></div>
+<div class="sec"><h2>Purchases</h2><div id="pbuys"></div></div>
 <div class="sec"><h2>Month history</h2><div id="hist" class="mute"></div><div class="row" style="margin-top:10px"><button id="close">Lock cycle</button></div><div class="mute" id="lockn"></div></div>
 </div></section>
 <section data-t="joint" hidden><div class="pad">
@@ -1133,7 +1134,25 @@ function renderAmex(full, stats, today) {
   const unassignedRow = document.querySelector("[data-cr]");
   if (unassignedRow) unassignedRow.style.display = stats.cats[""] ? "" : "none";
 
+  renderPurchaseCategories();
   renderHistory(today);
+}
+
+/* Every purchase outside a locked cycle, newest first, with a category picker. Unassigned ones are counted up top. */
+function renderPurchaseCategories() {
+  const open = state.buys.filter(b => !isLockedOn(state.hist, state.cy.day, b.date));
+  if (!open.length) {
+    $("pbuys").innerHTML = `<div class="mute">No purchases outside locked cycles.</div>`;
+    return;
+  }
+  const unassigned = open.filter(b => !state.amex.some(a => a.id === b.category)).length;
+  const rows = recentBuys(open, open.length).map(b => {
+    const options = [{ id: "", n: "Unassigned" }].concat(state.amex)
+      .map(a => `<option value="${esc(a.id)}"${a.id === b.category ? " selected" : ""}>${esc(a.n)}</option>`).join("");
+    const label = shortDate(parseIso(b.date)) + (b.note ? " · " + esc(b.note) : "");
+    return `<div class="row"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span><span style="white-space:nowrap">${gbpp(b.pence)}</span><select data-pb="${esc(b.id)}" aria-label="Category" style="width:130px">${options}</select></div>`;
+  }).join("");
+  $("pbuys").innerHTML = (unassigned ? `<div class="mute" style="margin-bottom:6px">${unassigned} unassigned</div>` : "") + rows;
 }
 
 function renderAmexCategories() {
@@ -1425,7 +1444,11 @@ function applyInput(t) {
   else if (t.id === "bt") state.trip.target = toPence(t.value);
   else if (t.id === "bs") state.trip.saved = toPence(t.value);
   else if (t.id === "bd") state.trip.date = validDate(t.value) ? t.value : state.trip.date;
-  else if (t.id === "cardBal") state.card.balance = Math.max(0, toPence(t.value));
+  else if (ds.pb !== undefined) {
+    const buy = state.buys.find(b => b.id === ds.pb);
+    if (!buy || isLockedOn(state.hist, state.cy.day, buy.date)) return false;
+    buy.category = state.amex.some(a => a.id === t.value) ? t.value : "";
+  } else if (t.id === "cardBal") state.card.balance = Math.max(0, toPence(t.value));
   else if (t.id === "cardEnd") state.card.end = validDate(t.value) ? t.value : "";
   else return false;
   return true;

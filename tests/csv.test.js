@@ -41,4 +41,17 @@ t("locked cycle skipped",st(a.w).buys.length===1&&/Nothing new/.test(a.w.__alert
 a=boot(D(2026,10,22),{"money-tool-v1":V5()});a.w.confirm=()=>false;imp(a.w,CSV);
 t("cancel adds nothing",st(a.w).buys.length===0);
 t("button and input exist",!!$(a.w,"csv")&&$(a.w,"fc").accept.includes(".csv"));
+
+// Changing a purchase's category from the Amex tab's Purchases list.
+const inpSel=(w,el,v)=>{el.value=v;el.dispatchEvent(new w.Event("input",{bubbles:true}))};
+a=boot(D(2026,10,22),{"money-tool-v1":V5({buys:[{id:"p1",date:"2026-10-21",pence:500,category:"",note:"TESCO"},{id:"p2",date:"2026-10-01",pence:900,category:"",note:"OLD"}],hist:[{k:"2026-10-19",m:"Oct 2026",spent:900,plan:60000,cats:[],locked:true}]})});
+t("cat no errs",a.errs.length===0,a.errs);
+const sel=a.w.document.querySelector('[data-pb="p1"]');
+t("picker shown with unassigned count",!!sel&&/1 unassigned/.test($(a.w,"pbuys").textContent),$(a.w,"pbuys").textContent);
+t("locked purchase not listed",!a.w.document.querySelector('[data-pb="p2"]'));
+inpSel(a.w,sel,"food");
+t("category saved",st(a.w).buys.find(b=>b.id==="p1").category==="food");
+t("amex split updated",/£5/.test(a.w.document.querySelector('[data-cs="food"]').textContent)&&!/unassigned/.test($(a.w,"pbuys").textContent));
+inpSel(a.w,a.w.document.querySelector('[data-pb="p1"]'),"");
+t("back to unassigned",st(a.w).buys.find(b=>b.id==="p1").category==="");
 done("csv");
