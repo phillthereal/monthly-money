@@ -118,7 +118,7 @@ input::placeholder{color:var(--mute);opacity:1}
 <div class="mute" style="padding:8px 0">Tap a dot to move a line to the next group.</div>
 </div></section>
 <section data-t="amex" hidden><div class="pad">
-<div class="sec"><h2>Amex split</h2><div class="hdr"><span>Category</span><span>Planned</span><span>Spent</span></div><div id="amex"></div><div id="amexsum" class="mute"></div></div>
+<div class="sec"><h2>Amex split</h2><div class="hdr"><span>Category</span><span>Planned</span><span>Spent</span></div><div id="amex"></div><div id="amexsum" class="mute"></div><div class="row" style="margin:10px 0 0"><button id="csv">Import Amex CSV</button></div><input type="file" id="fc" accept=".csv,text/csv" hidden><div class="mute">Download a CSV from Statements &amp; activity on the Amex website. Charges come in unassigned; payments and refunds are skipped; anything already imported is skipped too.</div></div>
 <div class="sec"><h2>Month history</h2><div id="hist" class="mute"></div><div class="row" style="margin-top:10px"><button id="close">Lock cycle</button></div><div class="mute" id="lockn"></div></div>
 </div></section>
 <section data-t="joint" hidden><div class="pad">
@@ -796,6 +796,60 @@ function recentBuys(buys, count) {
     .slice(0, count);
 }
 
+/* Split CSV text into rows of trimmed cells. Handles quoted fields, "" escapes, CRLF and a leading BOM. */
+function parseCsv(text) {
+  const rows = [];
+  let row = [], cell = "", quoted = false;
+  text = text.replace(/^\uFEFF/, "");
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"' && text[i + 1] === '"') cell += c, i++;
+      else if (c === '"') quoted = false;
+      else cell += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ",") row.push(cell.trim()), (cell = "");
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(cell.trim());
+      if (row.some(x => x)) rows.push(row);
+      (row = []), (cell = "");
+    } else cell += c;
+  }
+  row.push(cell.trim());
+  if (row.some(x => x)) rows.push(row);
+  return rows;
+}
+
+/* Charges from an Amex UK CSV (header row with Date, Description and Amount; dates DD/MM/YYYY; charges positive).
+   Credits (payments, refunds) and unreadable rows are counted, not returned. Each charge gets an id built from
+   its date, amount, description and how many identical rows came before it, so re-importing finds duplicates.
+   ponytail: header-based only; older Amex exports with no header row are rejected with a message. */
+function amexCharges(text) {
+  const rows = parseCsv(text);
+  const head = rows.findIndex(r => r.some(x => /^date$/i.test(x)) && r.some(x => /^amount$/i.test(x)));
+  if (head < 0) return null;
+  const col = re => rows[head].findIndex(x => re.test(x));
+  const di = col(/^date$/i), ai = col(/^amount$/i), ni = col(/^description$/i);
+  const seen = {};
+  const out = { charges: [], credits: 0, bad: 0 };
+  for (const r of rows.slice(head + 1)) {
+    const d = (r[di] || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    const date = d ? d[3] + "-" + pad2(+d[2]) + "-" + pad2(+d[1]) : "";
+    const amount = Number((r[ai] || "").replace(/[£,\s]/g, ""));
+    if (!validDate(date) || !isFinite(amount) || (r[ai] || "").trim() === "") { out.bad++; continue; }
+    const pence = Math.round(amount * 100);
+    if (pence <= 0) { out.credits++; continue; }
+    const note = (ni >= 0 ? r[ni] : "").replace(/\s+/g, " ").slice(0, 60);
+    const key = date + "|" + pence + "|" + note;
+    seen[key] = (seen[key] || 0) + 1;
+    let h = 0;
+    for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) | 0;
+    out.charges.push({ id: "amex-" + date + "-" + pence + "-" + (h >>> 0).toString(36) + "-" + seen[key], date, pence, category: "", note });
+  }
+  return out;
+}
+
 /* Income vs planned lines. scale is the bar width base (never 0). */
 function budgetTotals(lines, income) {
   const total = lines.reduce((t, l) => t + l.a, 0);
@@ -1284,6 +1338,43 @@ function matchBalance() {
   render(false);
 }
 
+/* Add the charges from an Amex CSV that aren't already in, after a confirm showing what will happen. */
+function importAmexCsv(text) {
+  const parsed = amexCharges(text);
+  if (!parsed) return alert("That doesn't look like an Amex CSV. It needs a header row with Date, Description and Amount.");
+  const today = todayIso();
+  const have = new Set(state.buys.map(b => b.id));
+  const add = [];
+  let dupes = 0, locked = 0;
+  for (const c of parsed.charges) {
+    if (have.has(c.id)) dupes++;
+    else if (c.date > today || isLockedOn(state.hist, state.cy.day, c.date)) locked++;
+    else add.push(c);
+  }
+  const n = (count, one, many) => count + " " + (count === 1 ? one : many);
+  const notes = [
+    dupes && dupes + " already imported",
+    parsed.credits && n(parsed.credits, "payment or refund", "payments or refunds"),
+    locked && locked + " in locked cycles or the future",
+    parsed.bad && n(parsed.bad, "unreadable row", "unreadable rows"),
+  ].filter(Boolean);
+  const skipped = notes.length ? "\nSkipping " + notes.join(", ") + "." : "";
+  if (!add.length) return alert("Nothing new to import." + skipped);
+  const total = add.reduce((x, c) => x + c.pence, 0);
+  if (!confirm("Add " + add.length + " purchases totalling " + gbpp(total) + "?" + skipped)) return;
+  state.buys.push(...add);
+  save();
+  render(false);
+}
+
+function importCsvFile(file) {
+  if (file.size > 2e6) return alert("That file is too big for an Amex CSV");
+  const reader = new FileReader();
+  reader.onload = () => importAmexCsv(String(reader.result));
+  reader.onerror = () => alert("Couldn't read that file");
+  reader.readAsText(file);
+}
+
 /* ---- History ------------------------------------------------------------ */
 
 function lockCycle() {
@@ -1376,6 +1467,7 @@ function onClick(e) {
   else if (t.id === "dl") downloadBackup();
   else if (t.id === "exp") copyBackup(t);
   else if (t.id === "rf") $("fi").click();
+  else if (t.id === "csv") $("fc").click();
   else if (t.id === "imp") {
     const pasted = prompt("Paste backup");
     if (pasted) restoreFrom(pasted);
@@ -1421,6 +1513,11 @@ $("qv").addEventListener("keydown", e => {
   if (e.key === "Enter") $("qa").click();
 });
 $("fi").addEventListener("change", onFileChosen);
+$("fc").addEventListener("change", e => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (file) importCsvFile(file);
+});
 
 syncInputs();
 render(true);
