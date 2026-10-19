@@ -118,7 +118,7 @@ input::placeholder{color:var(--mute);opacity:1}
 <div class="mute" style="padding:8px 0">Tap a dot to move a line to the next group.</div>
 </div></section>
 <section data-t="amex" hidden><div class="pad">
-<div class="sec"><h2>Amex split</h2><div class="hdr"><span>Category</span><span>Planned</span><span>Spent</span></div><div id="amex"></div><div id="amexsum" class="mute"></div><div class="row" style="margin:10px 0 0"><button id="csv">Import Amex CSV</button></div><input type="file" id="fc" accept=".csv,text/csv" hidden><div class="mute">Download a CSV from Statements &amp; activity on the Amex website. Charges come in unassigned (pick a category for each under Purchases below); payments and refunds are skipped; anything already imported is skipped too.</div></div>
+<div class="sec"><h2>Amex split</h2><div class="hdr"><span>Category</span><span>Planned</span><span>Spent</span></div><div id="amex"></div><div id="amexsum" class="mute"></div><div class="row" style="margin:10px 0 0"><button id="csv">Import Amex CSV</button></div><input type="file" id="fc" accept=".csv,text/csv" hidden><div class="mute">Download a CSV from Statements &amp; activity on the Amex website. Charges come in unassigned (pick a category for each under Purchases below); refunds lower the totals; payments to Amex are skipped; anything already imported is skipped too.</div></div>
 <div class="sec"><h2>Purchases</h2><div id="pbuys"></div></div>
 <div class="sec"><h2>Month history</h2><div id="hist" class="mute"></div><div class="row" style="margin-top:10px"><button id="close">Lock cycle</button></div><div class="mute" id="lockn"></div></div>
 </div></section>
@@ -823,7 +823,8 @@ function parseCsv(text) {
 }
 
 /* Charges from an Amex UK CSV (header row with Date, Description and Amount; dates DD/MM/YYYY; charges positive).
-   Credits (payments, refunds) and unreadable rows are counted, not returned. Each charge gets an id built from
+   Refunds come back as negative amounts so they lower the totals. Payments to Amex (a credit whose description
+   mentions PAYMENT or THANK YOU) and unreadable rows are counted, not returned. Each charge gets an id built from
    its date, amount, description and how many identical rows came before it, so re-importing finds duplicates.
    ponytail: header-based only; older Amex exports with no header row are rejected with a message. */
 function amexCharges(text) {
@@ -833,15 +834,16 @@ function amexCharges(text) {
   const col = re => rows[head].findIndex(x => re.test(x));
   const di = col(/^date$/i), ai = col(/^amount$/i), ni = col(/^description$/i);
   const seen = {};
-  const out = { charges: [], credits: 0, bad: 0 };
+  const out = { charges: [], payments: 0, bad: 0 };
   for (const r of rows.slice(head + 1)) {
     const d = (r[di] || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     const date = d ? d[3] + "-" + pad2(+d[2]) + "-" + pad2(+d[1]) : "";
     const amount = Number((r[ai] || "").replace(/[£,\s]/g, ""));
     if (!validDate(date) || !isFinite(amount) || (r[ai] || "").trim() === "") { out.bad++; continue; }
     const pence = Math.round(amount * 100);
-    if (pence <= 0) { out.credits++; continue; }
     const note = (ni >= 0 ? r[ni] : "").replace(/\s+/g, " ").slice(0, 60);
+    if (!pence) { out.bad++; continue; }
+    if (pence < 0 && /payment|thank you/i.test(note)) { out.payments++; continue; }
     const key = date + "|" + pence + "|" + note;
     seen[key] = (seen[key] || 0) + 1;
     let h = 0;
@@ -1373,7 +1375,7 @@ function importAmexCsv(text) {
   const n = (count, one, many) => count + " " + (count === 1 ? one : many);
   const notes = [
     dupes && dupes + " already imported",
-    parsed.credits && n(parsed.credits, "payment or refund", "payments or refunds"),
+    parsed.payments && n(parsed.payments, "payment to Amex", "payments to Amex"),
     locked && locked + " in locked cycles or the future",
     parsed.bad && n(parsed.bad, "unreadable row", "unreadable rows"),
   ].filter(Boolean);

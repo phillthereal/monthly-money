@@ -1,4 +1,4 @@
-// Amex CSV import: parsing, skipping credits and bad rows, duplicates on re-import, locked cycles.
+// Amex CSV import: parsing, refunds counted, payments and bad rows skipped, duplicates on re-import, locked cycles.
 const {boot,$,st,click,D,t,done}=require("./harness");
 const CSV='﻿Date,Description,Card Member,Account #,Amount\r\n'+
  '05/10/2026,TESCO STORES 1234,A N OTHER,-11005,12.34\r\n'+
@@ -14,21 +14,21 @@ const imp=(w,text)=>w.eval("importAmexCsv")(text);
 
 let a=boot(D(2026,10,22),{"money-tool-v1":V5()});t("no errs",a.errs.length===0,a.errs);
 const p=a.w.eval("amexCharges")(CSV);
-t("parsed charges",p.charges.length===5&&p.credits===2&&p.bad===1,JSON.stringify(p));
+t("parsed charges",p.charges.length===6&&p.payments===1&&p.bad===1,JSON.stringify(p));
 t("date, pence, quoted note",p.charges[1].date==="2026-10-06"&&p.charges[1].pence===100450&&p.charges[1].note==="PRET A MANGER, LONDON",JSON.stringify(p.charges[1]));
 t("identical rows get distinct ids",p.charges[2].id!==p.charges[3].id);
 t("not an amex csv",a.w.eval("amexCharges")("foo,bar\n1,2")===null);
 
 let asked="";a.w.confirm=m=>(asked=m,true);
 imp(a.w,CSV);let s=st(a.w);
-t("imported 4 (future skipped)",s.buys.length===4&&s.buys.reduce((x,b)=>x+b.pence,0)===1234+100450+320+320,JSON.stringify(s.buys));
-t("confirm summary",/Add 4 purchases totalling £1,023\.24\?/.test(asked)&&/2 payments or refunds/.test(asked)&&/1 in locked cycles or the future/.test(asked)&&/1 unreadable/.test(asked),asked);
+t("imported 5 incl refund (future skipped)",s.buys.length===5&&s.buys.reduce((x,b)=>x+b.pence,0)===1234+100450+320+320-400&&s.buys.some(b=>b.pence===-400&&b.note==="REFUND SHOP"),JSON.stringify(s.buys));
+t("confirm summary",/Add 5 purchases totalling £1,019\.24\?/.test(asked)&&/1 payment to Amex/.test(asked)&&/1 in locked cycles or the future/.test(asked)&&/1 unreadable/.test(asked),asked);
 t("unassigned with note",s.buys.every(b=>b.category==="")&&s.buys[0].note==="TESCO STORES 1234");
 
 a.w.__alerts=[];imp(a.w,CSV);
-t("re-import adds nothing",st(a.w).buys.length===4&&/Nothing new.*4 already imported/s.test(a.w.__alerts.join()),a.w.__alerts.join());
+t("re-import adds nothing",st(a.w).buys.length===5&&/Nothing new.*5 already imported/s.test(a.w.__alerts.join()),a.w.__alerts.join());
 imp(a.w,CSV+'09/10/2026,NEW ONE,A N OTHER,-11005,7.00\r\n');
-t("overlapping file adds only the new row",st(a.w).buys.length===5);
+t("overlapping file adds only the new row",st(a.w).buys.length===6);
 
 const ids=st(a.w).buys.map(b=>b.id).join();
 a=boot(D(2026,10,22),{"money-tool-v1":JSON.stringify(st(a.w))});
