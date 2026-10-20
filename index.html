@@ -489,7 +489,10 @@ function makePurchase(ctx, amex, id, date, pence, category, note, manual) {
 function migrateBuys(r, amex, ctx) {
   return (ctx.list(r.buys) || [])
     .filter(b => validDate(b.date) && toNumber(b.pence, 0) !== 0)
-    .map(b => makePurchase(ctx, amex, b.id, b.date, Math.round(toNumber(b.pence, 0)), b.category, b.note, b.manual));
+    .map(b => {
+      const note = typeof b.id === "string" && b.id.startsWith("amex-") ? shopName(b.note) : b.note;
+      return makePurchase(ctx, amex, b.id, b.date, Math.round(toNumber(b.pence, 0)), b.category, note, b.manual);
+    });
 }
 
 /* v2: the dated log becomes purchases; any typed total beyond it becomes one opening balance entry. */
@@ -842,16 +845,35 @@ function amexCharges(text) {
     const amount = Number((r[ai] || "").replace(/[£,\s]/g, ""));
     if (!validDate(date) || !isFinite(amount) || (r[ai] || "").trim() === "") { out.bad++; continue; }
     const pence = Math.round(amount * 100);
-    const note = (ni >= 0 ? r[ni] : "").replace(/\s+/g, " ").slice(0, 60);
+    const raw = ni >= 0 ? r[ni] || "" : "";
+    const full = raw.replace(/\s+/g, " ").slice(0, 60);
     if (!pence) { out.bad++; continue; }
-    if (pence < 0 && /payment|thank you/i.test(note)) { out.payments++; continue; }
-    const key = date + "|" + pence + "|" + note;
+    if (pence < 0 && /payment|thank you/i.test(full)) { out.payments++; continue; }
+    // The id hashes the full description (as earlier versions did, so re-imports still match); only the shop name is kept.
+    const key = date + "|" + pence + "|" + full;
     seen[key] = (seen[key] || 0) + 1;
     let h = 0;
     for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) | 0;
-    out.charges.push({ id: "amex-" + date + "-" + pence + "-" + (h >>> 0).toString(36) + "-" + seen[key], date, pence, category: "", note, hint: ci >= 0 ? r[ci] || "" : "" });
+    out.charges.push({ id: "amex-" + date + "-" + pence + "-" + (h >>> 0).toString(36) + "-" + seen[key], date, pence, category: "", note: shopName(raw), hint: (ci >= 0 ? r[ci] || "" : "") + " " + full });
   }
   return out;
+}
+
+/* Just the shop from an Amex description, so the town, reference codes and store numbers are never stored.
+   Amex pads the merchant to 23 characters before the town ("DELIVEROO        LONDON"), refs follow a "*"
+   ("AMZNMKTPLACE*B870V4QY4") and store numbers mix in digits ("TESCO STORE 6230 6230TE"). */
+function shopName(raw) {
+  let s = String(raw || "");
+  const gap = s.search(/\s{2,}/);
+  if (gap > 0) s = s.slice(0, gap);
+  else if (s.length > 24 && s[23] === " ") s = s.slice(0, 23);
+  return s
+    .replace(/\*\s*\S*\d\S*/g, "")
+    .split(/\s+/)
+    .filter(w => !(w.length >= 4 && /\d/.test(w)))
+    .join(" ")
+    .trim()
+    .slice(0, 60);
 }
 
 /* The merchant part of a purchase note: text before any "*", letters only, first two words

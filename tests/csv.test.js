@@ -23,7 +23,7 @@ let asked="";a.w.confirm=m=>(asked=m,true);
 imp(a.w,CSV);let s=st(a.w);
 t("imported 5 incl refund (future skipped)",s.buys.length===5&&s.buys.reduce((x,b)=>x+b.pence,0)===1234+100450+320+320-400&&s.buys.some(b=>b.pence===-400&&b.note==="REFUND SHOP"),JSON.stringify(s.buys));
 t("confirm summary",/Add 5 purchases totalling £1,019\.24\?/.test(asked)&&/1 payment to Amex/.test(asked)&&/1 in locked cycles or the future/.test(asked)&&/1 unreadable/.test(asked),asked);
-t("guessed category with note",s.buys[0].category==="food"&&s.buys[0].note==="TESCO STORES 1234"&&s.buys.filter(b=>b.category).length===1&&!("hint" in s.buys[0]),JSON.stringify(s.buys));
+t("guessed category with note",s.buys[0].category==="food"&&s.buys[0].note==="TESCO STORES"&&s.buys.filter(b=>b.category).length===1&&!("hint" in s.buys[0]),JSON.stringify(s.buys));
 t("confirm counts sorted",/1 of them sorted into categories; the rest are unassigned/.test(asked),asked);
 
 a.w.__alerts=[];imp(a.w,CSV);
@@ -63,7 +63,7 @@ const CSV2='Date,Description,Amount,Category\n'+
  '04/10/2026,AMAZON.CO.UK*AB12C,9.99,\n05/10/2026,ODD LITTLE SHOP,5.00,\n06/10/2026,MYSTERY LTD,7.00,General Purchases-Groceries\n';
 a=boot(D(2026,10,22),{"money-tool-v1":V5({amex:CATS})});a.w.confirm=()=>true;imp(a.w,CSV2);
 const cats=st(a.w).buys.map(b=>b.note+"="+b.category).join("|");
-t("keyword guesses",cats==="UBER *EATS PENDING=fun|UBER *TRIP=tr|TFL TRAVEL CH=tr|SAINSBURYS S/MKTS=food|AMAZON.CO.UK*AB12C=shop|ODD LITTLE SHOP=|MYSTERY LTD=food",cats);
+t("keyword guesses",cats==="UBER *EATS PENDING=fun|UBER *TRIP=tr|TFL TRAVEL CH=tr|SAINSBURYS S/MKTS=food|AMAZON.CO.UK=shop|ODD LITTLE SHOP=|MYSTERY LTD=food",cats);
 const odd=st(a.w).buys.find(b=>b.note==="ODD LITTLE SHOP");
 inpSel(a.w,a.w.document.querySelector('[data-pb="'+odd.id+'"]'),"shop");
 imp(a.w,'Date,Description,Amount\n07/10/2026,ODD LITTLE SHOP 2,4.00\n');
@@ -90,4 +90,14 @@ const g=(n,cats)=>a.w.eval("guessCategory")(cats||CATS,[],n);
 t("real-format guesses",g("BOLT SERVICES UK LTD MANCHESTER")==="tr"&&g("AMZNMKTPLACE*AB12CD34E AMAZON.CO.UK")==="shop"&&g("LIME*PASS XY9Z LEEDS")==="tr"&&g("VOI TECHNOLOGY AB BRISTOL")==="tr"&&g("CITY PETROL LTD YORK")==="tr"&&g("THE RED LION TAVERN BATH")==="fun"&&g("CORNER ESPRESSO BAR Leeds")==="fun"&&g("PLAYSTATION GLASGOW")==="fun"&&g("M&S SIMPLY FOOD CARDIFF")==="food");
 const SUBS=CATS.concat([{id:"sub",n:"Subscriptions",p:0}]);
 t("subscriptions beat shopping",g("APPLE.COM/BILL CORK",SUBS)==="sub"&&g("AMAZON PRIME*ZZ1111ZZ1 AMZN.CO.UK/PM",SUBS)==="sub"&&g("ANTHROPIC* CLAUDE SUB DUBLIN",SUBS)==="sub"&&g("AMZNMKTPLACE*X AMAZON.CO.UK",SUBS)==="shop");
+
+// Only the shop name is stored: no town, reference codes, store numbers or other CSV columns.
+const sn=x=>a.w.eval("shopName")(x);
+t("shop name only",sn("DELIVEROO               LEEDS")==="DELIVEROO"&&sn("AMZNMKTPLACE*AB12CD34E  AMAZON.CO.UK")==="AMZNMKTPLACE"&&sn("TESCO STORE 1234 1234TE YORK")==="TESCO STORE"&&sn("LIME*PASS XY9Z          LEEDS")==="LIME*PASS"&&sn("ANTHROPIC* CLAUDE SUB   DUBLIN")==="ANTHROPIC* CLAUDE SUB"&&sn("NUMBER 10 CAFE          York")==="NUMBER 10 CAFE",[sn("DELIVEROO               LEEDS"),sn("TESCO STORE 1234 1234TE YORK"),sn("LIME*PASS XY9Z          LEEDS")].join("|"));
+a=boot(D(2026,10,22),{"money-tool-v1":V5({amex:CATS})});a.w.confirm=()=>true;
+imp(a.w,'Date,Description,Card Member,Account #,Amount,Address,Postcode\n20/10/2026,AMZNMKTPLACE*AB12CD34E  AMAZON.CO.UK,J BLOGGS,-12345,9.99,1 HIGH STREET,AB1 2CD\n');
+const saved=a.w.localStorage.getItem("money-tool-v1");
+t("other columns never stored",!/BLOGGS|12345|HIGH STREET|AB1 2CD|AB12CD34E/.test(saved)&&st(a.w).buys[0].note==="AMZNMKTPLACE"&&st(a.w).buys[0].category==="shop");
+a=boot(D(2026,10,22),{"money-tool-v1":V5({amex:CATS,buys:[{id:"amex-old-1",date:"2026-10-20",pence:500,category:"",note:"TESCO STORE 1234 1234TE YORK"},{id:"today-1",date:"2026-10-20",pence:500,category:"",note:"lunch 1234"}]})});
+t("old imports cleaned on load, Today notes untouched",st(a.w).buys[0].note==="TESCO STORE"&&st(a.w).buys[1].note==="lunch 1234");
 done("csv");
