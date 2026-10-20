@@ -1,7 +1,7 @@
 // Cycles, purchases, chips, history/lock, projection, migration from v1/v2.
 const {boot,$,st,click,inp,D,t,done}=require("./harness");
 let a=boot(D(2026,10,22));t("fresh no errors",a.errs.length===0,a.errs);
-t("fresh state current version",st(a.w).v===5&&st(a.w).buys.length===0);
+t("fresh state current version",st(a.w).v===6&&st(a.w).buys.length===0);
 t("hero text",/Safe to spend/.test($(a.w,"cyout").textContent),$(a.w,"cyout").textContent);
 const c=(w,i,day)=>JSON.parse(w.eval(`JSON.stringify(cycleOf("${i}",${day}))`));
 t("19th stays in old cycle",c(a.w,"2026-10-19",19).enI==="2026-10-19"&&c(a.w,"2026-10-19",19).stI==="2026-09-20");

@@ -98,7 +98,7 @@ r=mig([1,2]);t("migrate: card array",r.c.balance===0&&r.c.end==="");
 const v4={v:4,inc:240000,lines:[{n:"Pot",a:30000,g:"Save",r:OLD_ROLE},{n:"Amex (monthly spend)",a:60000,g:"Spend",r:"amex"},{n:"Rent",a:75000,g:"Fixed",r:"none"}],amex:[{id:"food",n:"Food",p:60000}],cy:{day:19,debit:12,lastCat:""},buys:[],inv:{sb:60000,sr:8,ib:110000,ir:12},bz:{target:123400,saved:5600,date:"2027-02-01"},hist:[],joint:{split:40,partner:5000,bills:[{id:"x",n:"Rent",a:100000}]},tab:"goals",lastSaved:5,lastBackup:6};
 let b=boot(NOW,{"money-tool-v1":JSON.stringify(v4)});
 let s=st(b.w);
-t("v4 loads",b.errs.length===0&&s.v===5,b.errs);
+t("v4 loads",b.errs.length===0&&s.v===6,b.errs);
 t("v4 role becomes trip",s.lines[0].r==="trip"&&s.lines.length===3&&!s.lines.some(l=>l.r==="card"),JSON.stringify(s.lines));
 t("v4 bz becomes trip, same numbers",s.trip.target===123400&&s.trip.saved===5600&&s.trip.date==="2027-02-01"&&!("bz" in s),JSON.stringify(s.trip));
 t("v4 gets empty card, no card line",JSON.stringify(s.card)==='{"balance":0,"end":""}');
@@ -107,7 +107,7 @@ const tripText=norm($(b.w,"tripout").textContent);
 t("v4 trip outlook",/4 months to go/.test(tripText)&&/putting in £300/.test(tripText)&&/£1,256/.test(tripText)&&/On track/.test(tripText),tripText);
 // Same file restored through Restore (paste) into an app that already has other data.
 b=boot(NOW);b.w.prompt=()=>JSON.stringify(v4);click(b.w,$(b.w,"imp"));s=st(b.w);
-t("v4 paste restore",b.errs.length===0&&s.lines[0].r==="trip"&&s.trip.target===123400&&s.trip.saved===5600&&s.v===5&&s.tab==="today",JSON.stringify(s.trip));
+t("v4 paste restore",b.errs.length===0&&s.lines[0].r==="trip"&&s.trip.target===123400&&s.trip.saved===5600&&s.v===6&&s.tab==="today",JSON.stringify(s.trip));
 t("restore refreshes inputs",$(b.w,"bt").value==="1234"&&$(b.w,"bs").value==="56"&&$(b.w,"cardBal").value==="0"&&$(b.w,"jnm").value==="Partner");
 // Round trip: what the app saves restores to the same thing.
 const saved=b.w.localStorage.getItem("money-tool-v1");
@@ -124,10 +124,10 @@ t("no trip role warns",/No line has the Trip fund role, so the fund shows £0 a 
 // ---- v3 and v1 still load ----
 const v3={v:3,inc:240000,lines:[{n:"Amex",a:60000,g:"Spend",r:"amex"},{n:"Trip savings",a:20000,g:"Save"}],amex:[{id:"food",n:"Food",p:20000}],cy:{day:19,debit:12,lastCat:""},buys:[{id:"a",date:"2026-10-05",pence:4000,category:"food",note:""}],inv:{},bz:{},hist:[]};
 b=boot(NOW,{"money-tool-v1":JSON.stringify(v3)});s=st(b.w);
-t("v3 loads",b.errs.length===0&&s.v===5&&s.buys.length===1&&s.card.balance===0&&s.lines.length===2&&s.lines[1].r==="trip"&&s.trip.target===100000,b.errs);
+t("v3 loads",b.errs.length===0&&s.v===6&&s.buys.length===1&&s.card.balance===0&&s.lines.length===2&&s.lines[1].r==="trip"&&s.trip.target===100000,b.errs);
 t("v3 default trip date",s.trip.date==="2027-04-01",s.trip.date);
 b=boot(NOW,{"money-tool-v1":JSON.stringify({inc:2000,lines:[{n:"Rent",a:700,g:"Fixed"}]})});s=st(b.w);
-t("v1 loads",b.errs.length===0&&s.v===5&&s.inc===200000&&s.lines.length===1&&s.card.end===""&&s.joint.name==="Partner",b.errs);
+t("v1 loads",b.errs.length===0&&s.v===6&&s.inc===200000&&s.lines.length===1&&s.card.end===""&&s.joint.name==="Partner",b.errs);
 b=boot(NOW,{"money-tool-v1":JSON.stringify({v:4,inc:1,lines:[],bz:{target:5000,date:"nope"}})});
 t("invalid trip date falls back to default",st(b.w).trip.date==="2027-04-01"&&st(b.w).trip.target===5000,JSON.stringify(st(b.w).trip));
 b=boot(D(2026,8,31));t("default trip date: six months on",st(b.w).trip.date==="2027-02-01",st(b.w).trip.date);

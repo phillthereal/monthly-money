@@ -1,6 +1,6 @@
 // Joint account tab: totals, link to the budget line role, split, partner, migration.
 const {boot,$,st,click,inp,t,done}=require("./harness");
-let a=boot();t("fresh no errs",a.errs.length===0,a.errs);t("v5",st(a.w).v===5);
+let a=boot();t("fresh no errs",a.errs.length===0,a.errs);t("v6",st(a.w).v===6);
 const h=()=>$(a.w,"jhero").textContent;
 t("shared line has joint role",st(a.w).lines.find(l=>/Joint account/.test(l.n)).r==="joint");
 t("bills total",/Total £295\.00/.test($(a.w,"jtot").textContent)&&/Your share £147\.50/.test($(a.w,"jtot").textContent),$(a.w,"jtot").textContent);
@@ -21,7 +21,7 @@ inp(a.w,a.w.document.querySelector('input[data-b][data-f="n"]'),'<img src=x oner
 const sel=a.w.document.querySelector(`select[data-i="${idx}"]`);sel.value="none";sel.dispatchEvent(new a.w.Event("input",{bubbles:true}));
 t("warns without role",/No budget line has the Joint account role/.test(h()),h());
 const v3={v:3,inc:240000,lines:[{n:"Shared account (joint bills)",a:20000,g:"Fixed",r:"none"},{n:"Rent",a:75000,g:"Fixed",r:"none"}],amex:[],cy:{day:19,debit:12,lastCat:""},buys:[],inv:{},bz:{},hist:[]};
-const b=boot(null,{"money-tool-v1":JSON.stringify(v3)});t("v3 migrates",b.errs.length===0&&st(b.w).v===5&&st(b.w).lines[0].r==="joint"&&st(b.w).lines[1].r==="none"&&st(b.w).joint.bills.length===6&&st(b.w).joint.name==="Partner",b.errs);
+const b=boot(null,{"money-tool-v1":JSON.stringify(v3)});t("v3 migrates",b.errs.length===0&&st(b.w).v===6&&st(b.w).lines[0].r==="joint"&&st(b.w).lines[1].r==="none"&&st(b.w).joint.bills.length===6&&st(b.w).joint.name==="Partner",b.errs);
 t("v3 hero",/£52\.50 spare/.test($(b.w,"jhero").textContent));
 const c=boot(null,{"money-tool-v1":JSON.stringify({inc:2000,lines:[{n:"Joint account",a:200,g:"Fixed"}]})});t("v1 ok",c.errs.length===0&&st(c.w).lines[0].r==="joint"&&st(c.w).lines[0].a===20000,c.errs);
 const d=boot(null,{"money-tool-v1":JSON.stringify({v:4,inc:1,lines:[],joint:{split:40,partner:5000,bills:[{id:"x",n:"Rent",a:100000}]}})});

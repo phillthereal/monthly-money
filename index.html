@@ -150,7 +150,7 @@ input::placeholder{color:var(--mute);opacity:1}
      6. Event handlers           input, click, file and visibility events
      7. Boot
 
-   State shape (saved as JSON under STORE_KEY, version v: 5).
+   State shape (saved as JSON under STORE_KEY, version v: 6).
    All money is integer pence. Rates (inv.sr, inv.ir) are percent.
      v           5
      inc         take-home pay per month
@@ -189,7 +189,7 @@ const PREV_KEY = "money-tool-prev";         // copy taken before a restore or re
 const CORRUPT_KEY = "money-tool-corrupt";   // unreadable saved data, set aside
 const PRE_MIGRATION_KEY = "money-tool-v2";  // raw v1/v2 data, kept after migrating
 
-const STATE_VERSION = 5;
+const STATE_VERSION = 6;
 const DAY_MS = 864e5;
 
 const TABS = ["today", "budget", "amex", "joint", "goals"];
@@ -251,6 +251,7 @@ const DEFAULTS = {
     { id: "transport", n: "Transport", p: 8000 },
     { id: "fun", n: "Going out & fun", p: 12000 },
     { id: "shopping", n: "Shopping", p: 10000 },
+    { id: "subs", n: "Subscriptions", p: 0 },
   ],
   cy: { day: 19, debit: 12, lastCat: "" },
   buys: [],
@@ -395,6 +396,16 @@ function migrate(raw) {
 
   out.buys = ctx.scale === 1 ? migrateBuys(r, out.amex, ctx) : migrateLegacyLog(cy, oldAmex, out.amex, ctx);
   out.hist = migrateHistory(r, ctx);
+
+  // v6 adds a Subscriptions category once (never again if it is removed later); imported purchases from
+  // subscription shops outside locked cycles move into it. Categories picked by hand stay put.
+  if (toNumber(r.v, 0) < 6 && oldAmex && !out.amex.some(a => /subscri/i.test(a.n))) {
+    const subs = { id: ctx.uniqueId("subs"), n: "Subscriptions", p: 0 };
+    out.amex.push(subs);
+    out.buys.forEach(b => {
+      if (b.id.startsWith("amex-") && !b.manual && !isLockedOn(out.hist, out.cy.day, b.date) && guessCategory([subs], [], b.note) === subs.id) b.category = subs.id;
+    });
+  }
 
   const inv = ctx.obj(r.inv);
   out.inv = {

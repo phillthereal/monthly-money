@@ -9,10 +9,10 @@ const CSV='﻿Date,Description,Card Member,Account #,Amount\r\n'+
  '08/10/2026,REFUND SHOP,A N OTHER,-11005,-4.00\r\n'+
  '31/02/2026,BROKEN DATE,A N OTHER,-11005,9.99\r\n'+
  '25/12/2026,FUTURE,A N OTHER,-11005,9.99\r\n';
-const V5=extra=>JSON.stringify(Object.assign({v:5,inc:250000,lines:[{n:"Amex",a:60000,g:"Spend",r:"amex"}],amex:[{id:"food",n:"Food",p:20000}],cy:{day:19,debit:12,lastCat:""},buys:[],hist:[]},extra||{}));
+const V6=extra=>JSON.stringify(Object.assign({v:6,inc:250000,lines:[{n:"Amex",a:60000,g:"Spend",r:"amex"}],amex:[{id:"food",n:"Food",p:20000}],cy:{day:19,debit:12,lastCat:""},buys:[],hist:[]},extra||{}));
 const imp=(w,text)=>w.eval("importAmexCsv")(text);
 
-let a=boot(D(2026,10,22),{"money-tool-v1":V5()});t("no errs",a.errs.length===0,a.errs);
+let a=boot(D(2026,10,22),{"money-tool-v1":V6()});t("no errs",a.errs.length===0,a.errs);
 const p=a.w.eval("amexCharges")(CSV);
 t("parsed charges",p.charges.length===6&&p.payments===1&&p.bad===1,JSON.stringify(p));
 t("date, pence, quoted note",p.charges[1].date==="2026-10-06"&&p.charges[1].pence===100450&&p.charges[1].note==="PRET A MANGER, LONDON",JSON.stringify(p.charges[1]));
@@ -35,17 +35,17 @@ const ids=st(a.w).buys.map(b=>b.id).join();
 a=boot(D(2026,10,22),{"money-tool-v1":JSON.stringify(st(a.w))});
 t("ids survive reload",st(a.w).buys.map(b=>b.id).join()===ids);
 
-a=boot(D(2026,10,22),{"money-tool-v1":V5({buys:[{id:"x",date:"2026-10-01",pence:100,category:"",note:""}],hist:[{k:"2026-10-19",m:"Oct 2026",spent:100,plan:60000,cats:[],locked:true}]})});
+a=boot(D(2026,10,22),{"money-tool-v1":V6({buys:[{id:"x",date:"2026-10-01",pence:100,category:"",note:""}],hist:[{k:"2026-10-19",m:"Oct 2026",spent:100,plan:60000,cats:[],locked:true}]})});
 a.w.__alerts=[];imp(a.w,CSV);
 t("locked cycle skipped",st(a.w).buys.length===1&&/Nothing new/.test(a.w.__alerts.join()),a.w.__alerts.join());
 
-a=boot(D(2026,10,22),{"money-tool-v1":V5()});a.w.confirm=()=>false;imp(a.w,CSV);
+a=boot(D(2026,10,22),{"money-tool-v1":V6()});a.w.confirm=()=>false;imp(a.w,CSV);
 t("cancel adds nothing",st(a.w).buys.length===0);
 t("button and input exist",!!$(a.w,"csv")&&$(a.w,"fc").accept.includes(".csv"));
 
 // Changing a purchase's category from the Amex tab's Purchases list.
 const inpSel=(w,el,v)=>{el.value=v;el.dispatchEvent(new w.Event("input",{bubbles:true}))};
-a=boot(D(2026,10,22),{"money-tool-v1":V5({buys:[{id:"p1",date:"2026-10-21",pence:500,category:"",note:"TESCO"},{id:"p2",date:"2026-10-01",pence:900,category:"",note:"OLD"}],hist:[{k:"2026-10-19",m:"Oct 2026",spent:900,plan:60000,cats:[],locked:true}]})});
+a=boot(D(2026,10,22),{"money-tool-v1":V6({buys:[{id:"p1",date:"2026-10-21",pence:500,category:"",note:"TESCO"},{id:"p2",date:"2026-10-01",pence:900,category:"",note:"OLD"}],hist:[{k:"2026-10-19",m:"Oct 2026",spent:900,plan:60000,cats:[],locked:true}]})});
 t("cat no errs",a.errs.length===0,a.errs);
 const sel=a.w.document.querySelector('[data-pb="p1"]');
 t("picker shown with unassigned count",!!sel&&/1 unassigned/.test($(a.w,"pbuys").textContent),$(a.w,"pbuys").textContent);
@@ -61,7 +61,7 @@ const CATS=[{id:"food",n:"Food & groceries",p:0},{id:"tr",n:"Transport",p:0},{id
 const CSV2='Date,Description,Amount,Category\n'+
  '01/10/2026,UBER *EATS PENDING,12.00,\n01/10/2026,UBER *TRIP,8.00,\n02/10/2026,TFL TRAVEL CH,2.80,\n03/10/2026,SAINSBURYS S/MKTS,20.00,\n'+
  '04/10/2026,AMAZON.CO.UK*AB12C,9.99,\n05/10/2026,ODD LITTLE SHOP,5.00,\n06/10/2026,MYSTERY LTD,7.00,General Purchases-Groceries\n';
-a=boot(D(2026,10,22),{"money-tool-v1":V5({amex:CATS})});a.w.confirm=()=>true;imp(a.w,CSV2);
+a=boot(D(2026,10,22),{"money-tool-v1":V6({amex:CATS})});a.w.confirm=()=>true;imp(a.w,CSV2);
 const cats=st(a.w).buys.map(b=>b.note+"="+b.category).join("|");
 t("keyword guesses",cats==="UBER *EATS PENDING=fun|UBER *TRIP=tr|TFL TRAVEL CH=tr|SAINSBURYS S/MKTS=food|AMAZON.CO.UK=shop|ODD LITTLE SHOP=|MYSTERY LTD=food",cats);
 const odd=st(a.w).buys.find(b=>b.note==="ODD LITTLE SHOP");
@@ -69,7 +69,7 @@ inpSel(a.w,a.w.document.querySelector('[data-pb="'+odd.id+'"]'),"shop");
 imp(a.w,'Date,Description,Amount\n07/10/2026,ODD LITTLE SHOP 2,4.00\n');
 t("learned merchant on next import",st(a.w).buys.find(b=>b.note==="ODD LITTLE SHOP 2").category==="shop");
 const B=(id,note,category,extra)=>Object.assign({id,date:"2026-10-21",pence:100,category:category||"",note},extra||{});
-a=boot(D(2026,10,22),{"money-tool-v1":V5({amex:CATS,buys:[B("amex-1","TESCO STORE 1234 1234TE YORK"),B("amex-2","NOBODY KNOWS"),B("amex-3","NOBODY KNOWS"),B("amex-4","APPLE.COM/BILL CORK"),B("today-1","","fun")]})});
+a=boot(D(2026,10,22),{"money-tool-v1":V6({amex:CATS,buys:[B("amex-1","TESCO STORE 1234 1234TE YORK"),B("amex-2","NOBODY KNOWS"),B("amex-3","NOBODY KNOWS"),B("amex-4","APPLE.COM/BILL CORK"),B("today-1","","fun")]})});
 click(a.w,$(a.w,"autocat"));
 t("auto-assign all",st(a.w).buys.map(b=>b.category).join()==="food,,,shop,fun",st(a.w).buys.map(b=>b.category).join());
 inpSel(a.w,a.w.document.querySelector('[data-pb="amex-2"]'),"fun");
@@ -94,10 +94,23 @@ t("subscriptions beat shopping",g("APPLE.COM/BILL CORK",SUBS)==="sub"&&g("AMAZON
 // Only the shop name is stored: no town, reference codes, store numbers or other CSV columns.
 const sn=x=>a.w.eval("shopName")(x);
 t("shop name only",sn("DELIVEROO               LEEDS")==="DELIVEROO"&&sn("AMZNMKTPLACE*AB12CD34E  AMAZON.CO.UK")==="AMZNMKTPLACE"&&sn("TESCO STORE 1234 1234TE YORK")==="TESCO STORE"&&sn("LIME*PASS XY9Z          LEEDS")==="LIME*PASS"&&sn("ANTHROPIC* CLAUDE SUB   DUBLIN")==="ANTHROPIC* CLAUDE SUB"&&sn("NUMBER 10 CAFE          York")==="NUMBER 10 CAFE",[sn("DELIVEROO               LEEDS"),sn("TESCO STORE 1234 1234TE YORK"),sn("LIME*PASS XY9Z          LEEDS")].join("|"));
-a=boot(D(2026,10,22),{"money-tool-v1":V5({amex:CATS})});a.w.confirm=()=>true;
+a=boot(D(2026,10,22),{"money-tool-v1":V6({amex:CATS})});a.w.confirm=()=>true;
 imp(a.w,'Date,Description,Card Member,Account #,Amount,Address,Postcode\n20/10/2026,AMZNMKTPLACE*AB12CD34E  AMAZON.CO.UK,J BLOGGS,-12345,9.99,1 HIGH STREET,AB1 2CD\n');
 const saved=a.w.localStorage.getItem("money-tool-v1");
 t("other columns never stored",!/BLOGGS|12345|HIGH STREET|AB1 2CD|AB12CD34E/.test(saved)&&st(a.w).buys[0].note==="AMZNMKTPLACE"&&st(a.w).buys[0].category==="shop");
-a=boot(D(2026,10,22),{"money-tool-v1":V5({amex:CATS,buys:[{id:"amex-old-1",date:"2026-10-20",pence:500,category:"",note:"TESCO STORE 1234 1234TE YORK"},{id:"today-1",date:"2026-10-20",pence:500,category:"",note:"lunch 1234"}]})});
+a=boot(D(2026,10,22),{"money-tool-v1":V6({amex:CATS,buys:[{id:"amex-old-1",date:"2026-10-20",pence:500,category:"",note:"TESCO STORE 1234 1234TE YORK"},{id:"today-1",date:"2026-10-20",pence:500,category:"",note:"lunch 1234"}]})});
 t("old imports cleaned on load, Today notes untouched",st(a.w).buys[0].note==="TESCO STORE"&&st(a.w).buys[1].note==="lunch 1234");
+
+// v6 upgrade: Subscriptions added once, subscription shops move in, hand picks and locked cycles stay.
+const OLD=(buys,extra)=>JSON.stringify(Object.assign({v:5,inc:250000,lines:[{n:"Amex",a:60000,g:"Spend",r:"amex"}],amex:CATS,cy:{day:19,debit:12,lastCat:""},buys,hist:[]},extra||{}));
+a=boot(D(2026,10,22),{"money-tool-v1":OLD([B("amex-a","APPLE.COM/BILL","shop"),B("amex-b","ANTHROPIC* CLAUDE SUB",""),B("amex-c","NETFLIX.COM","fun",{manual:true}),B("amex-d","TESCO STORE","food"),Object.assign(B("amex-e","AMAZON PRIME","shop"),{date:"2026-10-01"})],{hist:[{k:"2026-10-19",m:"Oct 2026",spent:100,plan:60000,cats:[],locked:true}]})});
+s=st(a.w);const sub=s.amex.find(x=>x.n==="Subscriptions");
+t("v6 adds Subscriptions",a.errs.length===0&&s.v===6&&!!sub&&s.amex.length===5&&sub.p===0,JSON.stringify(s.amex));
+t("v6 moves subscription shops",s.buys.map(b=>b.category).join()===[sub.id,sub.id,"fun","food","shop"].join(),s.buys.map(b=>b.category).join());
+click(a.w,a.w.document.querySelector('[data-ad="4"]'));
+a=boot(D(2026,10,22),{"money-tool-v1":JSON.stringify(st(a.w))});
+t("removed Subscriptions stays removed",!st(a.w).amex.some(x=>x.n==="Subscriptions"));
+a=boot(D(2026,10,22),{"money-tool-v1":OLD([],{amex:CATS.concat([{id:"mine",n:"My subscriptions",p:500}])})});
+t("existing subscriptions category not duplicated",st(a.w).amex.length===5);
+t("fresh install has Subscriptions",st(boot(D(2026,10,22)).w).amex.some(x=>x.n==="Subscriptions"));
 done("csv");
