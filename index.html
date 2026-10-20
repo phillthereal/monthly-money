@@ -118,7 +118,7 @@ input::placeholder{color:var(--mute);opacity:1}
 <div class="mute" style="padding:8px 0">Tap a dot to move a line to the next group.</div>
 </div></section>
 <section data-t="amex" hidden><div class="pad">
-<div class="sec"><h2>Amex split</h2><div class="hdr"><span>Category</span><span>Planned</span><span>Spent</span></div><div id="amex"></div><div id="amexsum" class="mute"></div><div class="row" style="margin:10px 0 0"><button id="csv">Import Amex CSV</button></div><input type="file" id="fc" accept=".csv,text/csv" hidden><div class="mute">Download a CSV from Statements &amp; activity on the Amex website. Purchases get a category from the shop name where it can tell (fix any under Purchases below and that shop is remembered); refunds lower the totals; payments to Amex are skipped; anything already imported is skipped too.</div></div>
+<div class="sec"><h2>Amex split</h2><div class="hdr"><span>Category</span><span>Planned</span><span>Spent</span></div><div id="amex"></div><div class="row" style="margin:0"><button id="aadd" class="addb">Add category</button></div><div id="amexsum" class="mute"></div><div class="row" style="margin:10px 0 0"><button id="csv">Import Amex CSV</button></div><input type="file" id="fc" accept=".csv,text/csv" hidden><div class="mute">Download a CSV from Statements &amp; activity on the Amex website. Purchases get a category from the shop name where it can tell (fix any under Purchases below and that shop is remembered); refunds lower the totals; payments to Amex are skipped; anything already imported is skipped too.</div></div>
 <div class="sec"><h2>Purchases</h2><div id="pbuys"></div></div>
 <div class="sec"><h2>Month history</h2><div id="hist" class="mute"></div><div class="row" style="margin-top:10px"><button id="close">Lock cycle</button></div><div class="mute" id="lockn"></div></div>
 </div></section>
@@ -474,13 +474,14 @@ function migrateLines(r, ctx) {
   });
 }
 
-function makePurchase(ctx, amex, id, date, pence, category, note) {
+function makePurchase(ctx, amex, id, date, pence, category, note, manual) {
   return {
     id: ctx.uniqueId(id),
     date,
     pence,
     category: amex.some(a => a.id === category) ? category : "",
     note: ctx.str(note, "").slice(0, 60),
+    ...(manual === true ? { manual: true } : {}),
   };
 }
 
@@ -488,7 +489,7 @@ function makePurchase(ctx, amex, id, date, pence, category, note) {
 function migrateBuys(r, amex, ctx) {
   return (ctx.list(r.buys) || [])
     .filter(b => validDate(b.date) && toNumber(b.pence, 0) !== 0)
-    .map(b => makePurchase(ctx, amex, b.id, b.date, Math.round(toNumber(b.pence, 0)), b.category, b.note));
+    .map(b => makePurchase(ctx, amex, b.id, b.date, Math.round(toNumber(b.pence, 0)), b.category, b.note, b.manual));
 }
 
 /* v2: the dated log becomes purchases; any typed total beyond it becomes one opening balance entry. */
@@ -853,27 +854,29 @@ function amexCharges(text) {
   return out;
 }
 
-/* The merchant part of a purchase note: letters only, first two words ("TESCO STORES 1234" -> "TESCO STORES"). */
-const merchantKey = note => String(note || "").toUpperCase().replace(/[^A-Z&]+/g, " ").trim().split(" ").slice(0, 2).join(" ");
+/* The merchant part of a purchase note: text before any "*", letters only, first two words
+   ("TESCO STORE 6230 LONDON" -> "TESCO STORE", "AMZNMKTPLACE*B870V4QY4" -> "AMZNMKTPLACE"). */
+const merchantKey = note => String(note || "").split("*")[0].toUpperCase().replace(/[^A-Z&]+/g, " ").trim().split(" ").slice(0, 2).join(" ");
 
 /* Merchant words for each kind of category, matched against category names. Earlier rules win, so food delivery
    is "going out" before UBER counts as transport. ponytail: fixed UK keyword list; extend it when a merchant keeps
    landing in Unassigned (picking a category once teaches that merchant anyway). */
 const CATEGORY_RULES = [
-  [/out|fun|eat|restaurant|entertain|leisure/i, /UBER\s*\*?\s*EATS|DELIVEROO|JUST\s*EAT|PRET|STARBUCKS|COSTA|CAFFE?\s*NERO|NANDO|WAGAMAMA|PIZZA|MCDONALD|KFC|BURGER|GREGGS|LEON|ITSU|WASABI|PUB|TAVERN|BAR\b|RESTAURANT|CAFE|COFFEE|CINEMA|ODEON|VUE|CINEWORLD|EVERYMAN|TICKETMASTER|SPOTIFY|NETFLIX|DISNEY|ENTERTAINMENT/i],
+  [/subscri/i, /ANTHROPIC|CLAUDE|OPENAI|CHATGPT|APPLE\.COM\/BILL|ICLOUD|AMAZON PRIME|PRIME VIDEO|AUDIBLE|NETFLIX|SPOTIFY|DISNEY|YOUTUBE|NOW TV|PATREON|GOOGLE\s*\*?\s*(STORAGE|ONE)|SUBSCRIPTION/i],
+  [/out|fun|eat|restaurant|entertain|leisure/i, /UBER\s*\*?\s*EATS|DELIVEROO|PLAYSTATION|XBOX|NINTENDO|STEAM|ESPRESSO|JUST\s*EAT|PRET|STARBUCKS|COSTA|CAFFE?\s*NERO|NANDO|WAGAMAMA|PIZZA|MCDONALD|KFC|BURGER|GREGGS|LEON|ITSU|WASABI|PUB|TAVERN|BAR\b|RESTAURANT|CAFE|COFFEE|CINEMA|ODEON|VUE|CINEWORLD|EVERYMAN|TICKETMASTER|SPOTIFY|NETFLIX|DISNEY|ENTERTAINMENT/i],
   [/food|groc|supermarket/i, /TESCO|SAINSBURY|ASDA|ALDI|LIDL|WAITROSE|MORRISONS|CO-?OP|OCADO|ICELAND|M\s*&\s*S|MARKS\s*&?\s*SPENCER|WHOLE\s*FOODS|GROCER/i],
-  [/transport|travel|commut/i, /TFL|TRANSPORT FOR LONDON|UBER|BOLT|ADDISON LEE|TRAINLINE|NATIONAL RAIL|GWR|LNER|AVANTI|THAMESLINK|SOUTHERN|SOUTHWESTERN|EUROSTAR|SHELL|ESSO|\bBP\b|TEXACO|PARKING|RINGGO|LIME|TRAVEL|TRANSPORT/i],
-  [/shop/i, /AMAZON|ARGOS|EBAY|ASOS|ZARA|H\s*&\s*M|UNIQLO|PRIMARK|NEXT\b|JOHN LEWIS|BOOTS|SUPERDRUG|IKEA|APPLE|CURRYS|SELFRIDGES|SHOPPING|RETAIL/i],
+  [/transport|travel|commut/i, /TFL|TRANSPORT FOR LONDON|UBER|BOLT|ADDISON LEE|TRAINLINE|NATIONAL RAIL|GWR|LNER|AVANTI|THAMESLINK|SOUTHERN|SOUTHWESTERN|EUROSTAR|SHELL|ESSO|\bBP\b|TEXACO|PETROL|FUEL|PARKING|RINGGO|LIME|VOI\b|TIER\b|DOTT\b|TRAVEL|TRANSPORT/i],
+  [/shop/i, /AMAZON|AMZN|ARGOS|EBAY|ASOS|ZARA|H\s*&\s*M|UNIQLO|PRIMARK|NEXT\b|JOHN LEWIS|BOOTS|SUPERDRUG|IKEA|APPLE|CURRYS|SELFRIDGES|SHOPPING|RETAIL/i],
 ];
 
-/* Best category id for a purchase note: the latest purchase from the same merchant that has a category, else the
+/* Best category id for a purchase note: the latest hand-picked purchase from the same merchant, else the
    first keyword rule whose category exists, else "" (unassigned). extra is any other text to match (Amex's own category). */
 function guessCategory(amex, buys, note, extra) {
   const key = merchantKey(note);
   const valid = id => amex.some(a => a.id === id);
   if (key) {
     for (let i = buys.length - 1; i >= 0; i--) {
-      if (valid(buys[i].category) && merchantKey(buys[i].note) === key) return buys[i].category;
+      if (buys[i].manual && valid(buys[i].category) && merchantKey(buys[i].note) === key) return buys[i].category;
     }
   }
   const text = (note || "") + " " + (extra || "");
@@ -1185,13 +1188,13 @@ function renderPurchaseCategories() {
     const label = shortDate(parseIso(b.date)) + (b.note ? " · " + esc(b.note) : "");
     return `<div class="row"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span><span style="white-space:nowrap">${gbpp(b.pence)}</span><select data-pb="${esc(b.id)}" aria-label="Category" style="width:130px">${options}</select></div>`;
   }).join("");
-  const auto = unassigned ? `<div class="sp" style="margin-bottom:6px"><span class="mute">${unassigned} unassigned</span><button id="autocat">Auto-assign</button></div>` : "";
+  const auto = `<div class="sp" style="margin-bottom:6px"><span class="mute">${unassigned ? unassigned + " unassigned" : "All sorted"}</span><button id="autocat">Auto-assign all</button></div>`;
   $("pbuys").innerHTML = auto + rows;
 }
 
 function renderAmexCategories() {
   $("amex").innerHTML = state.amex
-    .map((l, i) => `<div class="row"><input type="text" value="${esc(l.n)}" data-j="${i}" data-f="n"><input type="number" inputmode="decimal" value="${fromPence(l.p)}" data-j="${i}" data-f="p"><span class="cs" data-cs="${esc(l.id)}"></span></div>`)
+    .map((l, i) => `<div class="row"><input type="text" value="${esc(l.n)}" data-j="${i}" data-f="n" aria-label="Category name"><input type="number" inputmode="decimal" value="${fromPence(l.p)}" data-j="${i}" data-f="p" aria-label="Planned" style="flex:none;width:72px"><span class="cs" data-cs="${esc(l.id)}"></span><button class="x" data-ad="${i}" aria-label="Remove category">✕</button></div>`)
     .join("")
     + `<div class="row" data-cr style="display:none"><span class="mute" style="flex:1">Unassigned and adjustments</span><span class="cs" data-cs=""></span></div>`;
 }
@@ -1426,15 +1429,16 @@ function importAmexCsv(text) {
   render(false);
 }
 
-/* Give unassigned purchases outside locked cycles a guessed category, where there is a guess. */
+/* Re-sort every imported purchase outside locked cycles. Hand-picked ones are kept (and teach their shop);
+   ones added on the Today tab keep the category chosen there. */
 function autoAssign() {
-  let count = 0;
+  let changed = 0;
   for (const b of state.buys) {
-    if (b.category || isLockedOn(state.hist, state.cy.day, b.date)) continue;
-    b.category = guessCategory(state.amex, state.buys, b.note);
-    if (b.category) count++;
+    if (b.manual || !b.id.startsWith("amex-") || isLockedOn(state.hist, state.cy.day, b.date)) continue;
+    const category = guessCategory(state.amex, state.buys, b.note);
+    if (category !== b.category) (b.category = category), changed++;
   }
-  if (!count) return alert("No guesses for these. Pick a category for one and others from the same shop follow.");
+  if (!changed) return alert("Everything is already sorted as well as it can be. Pick a category for an unassigned one and its shop is remembered.");
   save();
   render(false);
 }
@@ -1501,11 +1505,12 @@ function applyInput(t) {
     const buy = state.buys.find(b => b.id === ds.pb);
     if (!buy || isLockedOn(state.hist, state.cy.day, buy.date)) return false;
     buy.category = state.amex.some(a => a.id === t.value) ? t.value : "";
-    // Teach the merchant: other unassigned purchases from it follow this pick.
+    buy.manual = true;
+    // Teach the merchant: other purchases from it that weren't picked by hand follow this pick.
     const key = merchantKey(buy.note);
     if (key && buy.category) {
       state.buys.forEach(b => {
-        if (!b.category && merchantKey(b.note) === key && !isLockedOn(state.hist, state.cy.day, b.date)) b.category = buy.category;
+        if (!b.manual && merchantKey(b.note) === key && !isLockedOn(state.hist, state.cy.day, b.date)) b.category = buy.category;
       });
     }
   } else if (t.id === "cardBal") state.card.balance = Math.max(0, toPence(t.value));
@@ -1551,6 +1556,16 @@ function onClick(e) {
   else if (t.id === "exp") copyBackup(t);
   else if (t.id === "rf") $("fi").click();
   else if (t.id === "csv") $("fc").click();
+  else if (t.id === "aadd") changeAndRebuild(() => state.amex.push({ id: uid(), n: "New category", p: 0 }));
+  else if (ds.ad !== undefined) {
+    const category = state.amex[ds.ad];
+    if (category && confirm("Remove " + category.n + "? Its purchases become unassigned.")) {
+      changeAndRebuild(() => {
+        state.amex.splice(ds.ad, 1);
+        state.buys.forEach(b => b.category === category.id && (b.category = ""));
+      });
+    }
+  }
   else if (t.id === "autocat") autoAssign();
   else if (t.id === "imp") {
     const pasted = prompt("Paste backup");

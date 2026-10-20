@@ -5,6 +5,7 @@ node_modules/
 monthly-money-*.json
 my-*.json
 *.bak
+*.csv
 
 # Local scratch
 .DS_Store

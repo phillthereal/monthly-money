@@ -1,5 +1,5 @@
 // Amex CSV import: parsing, refunds counted, payments and bad rows skipped, duplicates on re-import, locked cycles.
-const {boot,$,st,click,D,t,done}=require("./harness");
+const {boot,$,st,click,inp,D,t,done}=require("./harness");
 const CSV='﻿Date,Description,Card Member,Account #,Amount\r\n'+
  '05/10/2026,TESCO STORES 1234,A N OTHER,-11005,12.34\r\n'+
  '06/10/2026,"PRET A MANGER, LONDON",A N OTHER,-11005,"1,004.50"\r\n'+
@@ -68,9 +68,26 @@ const odd=st(a.w).buys.find(b=>b.note==="ODD LITTLE SHOP");
 inpSel(a.w,a.w.document.querySelector('[data-pb="'+odd.id+'"]'),"shop");
 imp(a.w,'Date,Description,Amount\n07/10/2026,ODD LITTLE SHOP 2,4.00\n');
 t("learned merchant on next import",st(a.w).buys.find(b=>b.note==="ODD LITTLE SHOP 2").category==="shop");
-a=boot(D(2026,10,22),{"money-tool-v1":V5({amex:CATS,buys:[{id:"q1",date:"2026-10-21",pence:100,category:"",note:"TESCO"},{id:"q2",date:"2026-10-21",pence:100,category:"",note:"NOBODY KNOWS"},{id:"q3",date:"2026-10-21",pence:100,category:"",note:"NOBODY KNOWS"}]})});
+const B=(id,note,category,extra)=>Object.assign({id,date:"2026-10-21",pence:100,category:category||"",note},extra||{});
+a=boot(D(2026,10,22),{"money-tool-v1":V5({amex:CATS,buys:[B("amex-1","TESCO STORE 1234 1234TE YORK"),B("amex-2","NOBODY KNOWS"),B("amex-3","NOBODY KNOWS"),B("amex-4","APPLE.COM/BILL CORK"),B("today-1","","fun")]})});
 click(a.w,$(a.w,"autocat"));
-t("auto-assign button",st(a.w).buys.map(b=>b.category).join()==="food,,",st(a.w).buys.map(b=>b.category).join());
-inpSel(a.w,a.w.document.querySelector('[data-pb="q2"]'),"fun");
-t("pick teaches same-shop unassigned",st(a.w).buys.find(b=>b.id==="q3").category==="fun");
+t("auto-assign all",st(a.w).buys.map(b=>b.category).join()==="food,,,shop,fun",st(a.w).buys.map(b=>b.category).join());
+inpSel(a.w,a.w.document.querySelector('[data-pb="amex-2"]'),"fun");
+t("pick teaches same shop",st(a.w).buys.find(b=>b.id==="amex-3").category==="fun"&&st(a.w).buys.find(b=>b.id==="amex-2").manual===true);
+inpSel(a.w,a.w.document.querySelector('[data-pb="amex-1"]'),"shop");
+click(a.w,$(a.w,"aadd"));
+const ni=st(a.w).amex.length-1;inp(a.w,a.w.document.querySelector('[data-j="'+ni+'"][data-f="n"]'),"Subscriptions");
+click(a.w,$(a.w,"autocat"));
+const after=st(a.w).buys.map(b=>b.category);
+t("new Subscriptions category picked up by auto-assign all",after[3]===st(a.w).amex[ni].id,after.join());
+t("hand-picked and Today purchases kept",after[0]==="shop"&&after[1]==="fun"&&after[4]==="fun",after.join());
+a=boot(D(2026,10,22),{"money-tool-v1":JSON.stringify(st(a.w))});
+t("manual flag survives reload",st(a.w).buys.find(b=>b.id==="amex-1").manual===true&&!("manual" in st(a.w).buys.find(b=>b.id==="amex-4")));
+click(a.w,a.w.document.querySelector('[data-ad="'+ni+'"]'));
+t("remove category unassigns its purchases",st(a.w).amex.length===4&&st(a.w).buys.find(b=>b.id==="amex-4").category==="");
+// Real Amex UK layout: merchant padded with spaces then the town, AMZNMKTPLACE*ref, refunds without the ref.
+const g=(n,cats)=>a.w.eval("guessCategory")(cats||CATS,[],n);
+t("real-format guesses",g("BOLT SERVICES UK LTD MANCHESTER")==="tr"&&g("AMZNMKTPLACE*AB12CD34E AMAZON.CO.UK")==="shop"&&g("LIME*PASS XY9Z LEEDS")==="tr"&&g("VOI TECHNOLOGY AB BRISTOL")==="tr"&&g("CITY PETROL LTD YORK")==="tr"&&g("THE RED LION TAVERN BATH")==="fun"&&g("CORNER ESPRESSO BAR Leeds")==="fun"&&g("PLAYSTATION GLASGOW")==="fun"&&g("M&S SIMPLY FOOD CARDIFF")==="food");
+const SUBS=CATS.concat([{id:"sub",n:"Subscriptions",p:0}]);
+t("subscriptions beat shopping",g("APPLE.COM/BILL CORK",SUBS)==="sub"&&g("AMAZON PRIME*ZZ1111ZZ1 AMZN.CO.UK/PM",SUBS)==="sub"&&g("ANTHROPIC* CLAUDE SUB DUBLIN",SUBS)==="sub"&&g("AMZNMKTPLACE*X AMAZON.CO.UK",SUBS)==="shop");
 done("csv");
