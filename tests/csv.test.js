@@ -23,7 +23,8 @@ let asked="";a.w.confirm=m=>(asked=m,true);
 imp(a.w,CSV);let s=st(a.w);
 t("imported 5 incl refund (future skipped)",s.buys.length===5&&s.buys.reduce((x,b)=>x+b.pence,0)===1234+100450+320+320-400&&s.buys.some(b=>b.pence===-400&&b.note==="REFUND SHOP"),JSON.stringify(s.buys));
 t("confirm summary",/Add 5 purchases totalling £1,019\.24\?/.test(asked)&&/1 payment to Amex/.test(asked)&&/1 in locked cycles or the future/.test(asked)&&/1 unreadable/.test(asked),asked);
-t("unassigned with note",s.buys.every(b=>b.category==="")&&s.buys[0].note==="TESCO STORES 1234");
+t("guessed category with note",s.buys[0].category==="food"&&s.buys[0].note==="TESCO STORES 1234"&&s.buys.filter(b=>b.category).length===1&&!("hint" in s.buys[0]),JSON.stringify(s.buys));
+t("confirm counts sorted",/1 of them sorted into categories; the rest are unassigned/.test(asked),asked);
 
 a.w.__alerts=[];imp(a.w,CSV);
 t("re-import adds nothing",st(a.w).buys.length===5&&/Nothing new.*5 already imported/s.test(a.w.__alerts.join()),a.w.__alerts.join());
@@ -54,4 +55,22 @@ t("category saved",st(a.w).buys.find(b=>b.id==="p1").category==="food");
 t("amex split updated",/£5/.test(a.w.document.querySelector('[data-cs="food"]').textContent)&&!/unassigned/.test($(a.w,"pbuys").textContent));
 inpSel(a.w,a.w.document.querySelector('[data-pb="p1"]'),"");
 t("back to unassigned",st(a.w).buys.find(b=>b.id==="p1").category==="");
+
+// Auto categories with the default category list.
+const CATS=[{id:"food",n:"Food & groceries",p:0},{id:"tr",n:"Transport",p:0},{id:"fun",n:"Going out & fun",p:0},{id:"shop",n:"Shopping",p:0}];
+const CSV2='Date,Description,Amount,Category\n'+
+ '01/10/2026,UBER *EATS PENDING,12.00,\n01/10/2026,UBER *TRIP,8.00,\n02/10/2026,TFL TRAVEL CH,2.80,\n03/10/2026,SAINSBURYS S/MKTS,20.00,\n'+
+ '04/10/2026,AMAZON.CO.UK*AB12C,9.99,\n05/10/2026,ODD LITTLE SHOP,5.00,\n06/10/2026,MYSTERY LTD,7.00,General Purchases-Groceries\n';
+a=boot(D(2026,10,22),{"money-tool-v1":V5({amex:CATS})});a.w.confirm=()=>true;imp(a.w,CSV2);
+const cats=st(a.w).buys.map(b=>b.note+"="+b.category).join("|");
+t("keyword guesses",cats==="UBER *EATS PENDING=fun|UBER *TRIP=tr|TFL TRAVEL CH=tr|SAINSBURYS S/MKTS=food|AMAZON.CO.UK*AB12C=shop|ODD LITTLE SHOP=|MYSTERY LTD=food",cats);
+const odd=st(a.w).buys.find(b=>b.note==="ODD LITTLE SHOP");
+inpSel(a.w,a.w.document.querySelector('[data-pb="'+odd.id+'"]'),"shop");
+imp(a.w,'Date,Description,Amount\n07/10/2026,ODD LITTLE SHOP 2,4.00\n');
+t("learned merchant on next import",st(a.w).buys.find(b=>b.note==="ODD LITTLE SHOP 2").category==="shop");
+a=boot(D(2026,10,22),{"money-tool-v1":V5({amex:CATS,buys:[{id:"q1",date:"2026-10-21",pence:100,category:"",note:"TESCO"},{id:"q2",date:"2026-10-21",pence:100,category:"",note:"NOBODY KNOWS"},{id:"q3",date:"2026-10-21",pence:100,category:"",note:"NOBODY KNOWS"}]})});
+click(a.w,$(a.w,"autocat"));
+t("auto-assign button",st(a.w).buys.map(b=>b.category).join()==="food,,",st(a.w).buys.map(b=>b.category).join());
+inpSel(a.w,a.w.document.querySelector('[data-pb="q2"]'),"fun");
+t("pick teaches same-shop unassigned",st(a.w).buys.find(b=>b.id==="q3").category==="fun");
 done("csv");
