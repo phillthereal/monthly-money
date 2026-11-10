@@ -1,0 +1,3 @@
+#!/bin/sh
+# Blocks a commit whose files contain personal data (see scripts/privacy-scan.js).
+exec node "$(git rev-parse --show-toplevel)/scripts/privacy-scan.js"
