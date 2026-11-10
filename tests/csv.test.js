@@ -86,8 +86,34 @@ a=boot(D(2026,10,22),{"money-tool-v1":JSON.stringify(st(a.w))});
 t("manual flag survives reload",st(a.w).buys.find(b=>b.id==="amex-1").manual===true&&!("manual" in st(a.w).buys.find(b=>b.id==="amex-4")));
 click(a.w,a.w.document.querySelector('[data-ad="'+ni+'"]'));await settle();
 t("remove category unassigns its purchases",st(a.w).amex.length===4&&st(a.w).buys.find(b=>b.id==="amex-4").category==="");
-// Real Amex UK layout: merchant padded with spaces then the town, AMZNMKTPLACE*ref, refunds without the ref.
 const g=(n,cats)=>a.w.eval("guessCategory")(cats||CATS,[],n);
+// "I don't know" in the sorter: the shop leaves the list, stays unassigned, new imports follow, a later pick still teaches.
+{const TC=CATS.concat([{id:"trav",n:"Travel",p:0}]);
+let d=boot(D(2026,10,22),{"money-tool-v1":V6({amex:TC,buys:[B("amex-1","NOBODY KNOWS"),B("amex-2","NOBODY KNOWS"),B("amex-3","OTHER PLACE")]})});d.w.confirm=()=>true;
+click(d.w,d.w.document.querySelector("[data-sort]"));await settle();
+const pick=()=>[...d.w.document.querySelectorAll("#sortl select")];
+t("sorter offers I don't know",pick().length===2&&[...pick()[0].options].some(o=>o.textContent==="I don't know"));
+const DK=[...pick()[0].options].pop().value;
+inpSel(d.w,pick().find(x=>/NOBODY/.test(x.getAttribute("aria-label"))),DK);await settle();
+let bs=st(d.w).buys;
+t("don't know parks the whole shop, unassigned, not hand-picked",bs[0].skip===true&&bs[1].skip===true&&!bs[2].skip&&bs[0].category===""&&!bs[0].manual,JSON.stringify(bs));
+t("parked shop left the sorter and the count",pick().length===1&&/Sort 1 purchase /.test($(d.w,"pbuys").textContent)&&/3 unassigned/.test($(d.w,"pbuys").textContent),$(d.w,"pbuys").textContent.slice(0,80));
+await imp(d.w,'Date,Description,Amount\n20/10/2026,NOBODY KNOWS 2,4.17\n19/10/2026,VUELING 000K7X9PL,41.73\n');
+bs=st(d.w).buys;
+t("new import from a parked shop is parked too",bs.find(b=>b.note==="NOBODY KNOWS 2").skip===true);
+t("flights go to a Travel category, everyday transport stays",bs.find(b=>/VUELING/.test(b.note)).category==="trav"&&g("TFL TRAVEL CH",TC)==="tr"&&g("VUELING",CATS)==="");
+const hand=Object.assign(JSON.parse(JSON.stringify(st(d.w))),{});hand.buys[0].manual=true; // one of them was hand-set to Unassigned earlier
+d=boot(D(2026,10,22),{"money-tool-v1":JSON.stringify(hand)});
+t("parked flag survives reload",st(d.w).buys.filter(b=>b.skip).length===3);
+t("look-alike shops are not travel",["HOTEL CHOCOLAT","EMIRATES STADIUM","BA HIGH LIFE"].every(n=>g(n,TC)==="")&&g("TRAVELODGE YORK",TC)==="trav");
+inpSel(d.w,d.w.document.querySelector('[data-pb="amex-2"]'),"fun");
+bs=st(d.w).buys;
+t("a later pick un-parks the whole shop and teaches all but hand-picked ones",bs.filter(b=>b.skip).length===0&&bs.filter(b=>/NOBODY/.test(b.note)).map(b=>b.category).join()===",fun,fun",JSON.stringify(bs));
+d=boot(D(2026,10,22),{"money-tool-v1":V6({amex:TC.concat([{id:"?",n:"Odd",p:0}]),buys:[B("amex-1","NOBODY KNOWS")]})});
+click(d.w,d.w.document.querySelector("[data-sort]"));await settle();
+inpSel(d.w,d.w.document.querySelector("#sortl select"),DK);await settle();
+t("a category with id ? does not collide with I don't know",st(d.w).buys[0].skip===true&&st(d.w).buys[0].category==="");}
+// Real Amex UK layout: merchant padded with spaces then the town, AMZNMKTPLACE*ref, refunds without the ref.
 t("real-format guesses",g("BOLT SERVICES UK LTD MANCHESTER")==="tr"&&g("AMZNMKTPLACE*AB12CD34E AMAZON.CO.UK")==="shop"&&g("LIME*PASS XY9Z LEEDS")==="tr"&&g("VOI TECHNOLOGY AB BRISTOL")==="tr"&&g("CITY PETROL LTD YORK")==="tr"&&g("THE RED LION TAVERN BATH")==="fun"&&g("CORNER ESPRESSO BAR Leeds")==="fun"&&g("PLAYSTATION GLASGOW")==="fun"&&g("M&S SIMPLY FOOD CARDIFF")==="food");
 const SUBS=CATS.concat([{id:"sub",n:"Subscriptions",p:0}]);
 t("subscriptions beat shopping",g("APPLE.COM/BILL CORK",SUBS)==="sub"&&g("AMAZON PRIME*ZZ1111ZZ1 AMZN.CO.UK/PM",SUBS)==="sub"&&g("ANTHROPIC* CLAUDE SUB DUBLIN",SUBS)==="sub"&&g("AMZNMKTPLACE*X AMAZON.CO.UK",SUBS)==="shop");
