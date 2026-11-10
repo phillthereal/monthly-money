@@ -109,7 +109,7 @@ t("markup escaped: no img element made",z.errs.length===0&&!z.w.document.querySe
  lines=Array.from({length:300},(_,i)=>({n:long,a:100,g:"Spend",r:"none"})),
  big=boot(D(2026,11,3),{"money-tool-v1":JSON.stringify({v:6,inc:1000,lines,amex:cats,buys:[{id:"i".repeat(300),date:"2026-11-02",pence:100,category:"c1",note:long}],hist:[],lastSaved:5})});
  const g=st(big.w);
- t("oversized state is capped",big.errs.length===0&&g.lines.length===200&&g.amex.length===60&&g.amex[0].id==="c0"&&g.lines[0].n.length===80&&g.buys[0].id.length===64&&g.buys[0].note.length<=60,big.errs.concat([g.lines.length,g.amex.length]));
+ t("oversized state is capped",big.errs.length===0&&g.lines.length===200&&g.amex.length===60&&g.amex[0].id==="c0"&&g.lines[0].n.length===80&&g.buys[0].id.length<=64&&g.buys[0].note.length<=60,big.errs.concat([g.lines.length,g.amex.length]));
  // Purchases and history are oldest-first: past the cap the newest are kept. History labels are cut to 80.
  const mig=big.w.eval("migrate"),many=Array.from({length:20003},(_,i)=>({id:"p"+i,date:"2026-11-02",pence:417,category:"",note:""}));
  const hist=Array.from({length:243},(_,i)=>({k:"2026-01-19",m:"m"+i+long,plan:1,spent:1,cats:[],locked:true}));
@@ -119,5 +119,21 @@ t("markup escaped: no img element made",z.errs.length===0&&!z.w.document.querySe
  const log=Array.from({length:20003},(_,i)=>({d:"2026-11-0"+(1+i%2),a:i===20002?7.31:1}));
  const lg=mig({v:2,inc:1000,lines:[],cy:{log},lastSaved:5});
  t("legacy log keeps the newest 20000",lg.buys.length===20000&&lg.buys[19999].pence===731,lg.buys.length);}
+// Script policy: no 'unsafe-inline' for scripts, and the hash is the one for the script text (skipped for a FILE override).
+if(!process.env.FILE){const h=require("fs").readFileSync(__dirname+"/../index.html","utf8"),sp=(h.match(/script-src ([^;"]*)/)||[])[1]||"",
+ hs="'sha256-"+require("crypto").createHash("sha256").update(h.match(/<script>([\s\S]*?)<\/script>/)[1]).digest("base64")+"'";
+ t("script policy is the script's hash only",sp===hs,sp);}
+// ids over 64 characters get fresh ids and references follow; 60 old categories plus Subscriptions stay at 60.
+{const L1="x".repeat(64)+"1",L2="x".repeat(64)+"2",mg=boot(D(2026,11,3)).w.eval("migrate");
+ const o=mg({v:6,inc:1000,lines:[],amex:[{id:L1,n:"One",p:100},{id:L2,n:"Two",p:100}],cy:{day:19,debit:0,lastCat:L2},buys:[{id:"b1",date:"2026-11-02",pence:100,category:L1,note:""},{id:"b2",date:"2026-11-02",pence:200,category:L2,note:""}]});
+ const one=o.amex.find(a=>a.n==="One"),two=o.amex.find(a=>a.n==="Two");
+ t("long ids stay two categories",o.amex.length===2&&one.id!==two.id&&one.id.length<=64&&two.id.length<=64);
+ t("long-id purchases stay with their category",o.buys.find(b=>b.id==="b1").category===one.id&&o.buys.find(b=>b.id==="b2").category===two.id);
+ t("lastCat on a long id follows it",o.cy.lastCat===two.id);
+ const cats=Array.from({length:60},(_,i)=>({id:"c"+i,n:"Cat"+i,p:0})),bs=cats.map((c,i)=>({id:"q"+i,date:"2026-11-02",pence:100,category:c.id,note:""}));
+ const a1=mg({v:5,inc:1000,lines:[],amex:cats,cy:{day:19,debit:0,lastCat:""},buys:bs});
+ const a2=mg(JSON.parse(JSON.stringify(a1)));
+ t("old save with 60 categories loads with exactly 60 incl. Subscriptions",a1.amex.length===60&&a1.amex.some(a=>a.n==="Subscriptions"));
+ t("reload keeps the same 60 and no purchase loses its category",a2.amex.length===60&&a2.amex.map(a=>a.id).join()===a1.amex.map(a=>a.id).join()&&a2.buys.filter(b=>b.id!=="q59").every(b=>b.category)&&a2.buys.length===a1.buys.length&&a2.buys.every(b=>!b.category||a2.amex.some(a=>a.id===b.category)));}
 done("core");
 })();

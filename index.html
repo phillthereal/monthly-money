@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en-GB"><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; font-src data:; img-src data: blob:; manifest-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-EkhUC7ACNWI2wilp10CCcr5bK6dgPSxMgNeiTyRtceQ='; style-src 'unsafe-inline'; font-src data:; img-src data: blob:; manifest-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <meta name="theme-color" content="#eef1f0" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0c1211" media="(prefers-color-scheme: dark)">
 <meta name="color-scheme" content="light dark">
@@ -510,7 +510,10 @@ function migrate(raw) {
 
   out.inc = ctx.money(r.inc, out.inc);
   out.lines = migrateLines(r, ctx);
-  const oldAmex = ctx.list(r.amex, 60);
+  let oldAmex = ctx.list(r.amex, 60);
+  // v6 adds a Subscriptions category (below); make room first so the total stays within the 60 cap.
+  const addSubs = toNumber(r.v, 0) < 6 && oldAmex && !oldAmex.some(l => /subscri/i.test(ctx.str(l.n, "Category")));
+  if (addSubs) oldAmex = oldAmex.slice(0, 59);
   if (oldAmex) out.amex = oldAmex.map(l => ({ id: ctx.uniqueId(l.id), n: ctx.str(l.n, "Category"), p: ctx.money(l.p, 0) }));
   else out.amex.forEach(a => ctx.claimId(a.id));
 
@@ -518,7 +521,7 @@ function migrate(raw) {
   out.cy = {
     day: Math.min(28, Math.max(1, Math.round(toNumber(cy.day, out.cy.day)))),
     debit: Math.min(60, Math.max(0, Math.round(toNumber(cy.debit, out.cy.debit)))),
-    lastCat: out.amex.some(a => a.id === String(cy.lastCat).slice(0, 64)) ? String(cy.lastCat).slice(0, 64) : "",
+    lastCat: out.amex.some(a => a.id === ctx.remap(String(cy.lastCat))) ? ctx.remap(String(cy.lastCat)) : "",
   };
 
   out.buys = ctx.scale === 1 ? migrateBuys(r, out.amex, ctx) : migrateLegacyLog(cy, oldAmex, out.amex, ctx);
@@ -526,8 +529,7 @@ function migrate(raw) {
 
   // v6 adds a Subscriptions category once (never again if it is removed later); imported purchases from
   // subscription shops outside locked cycles move into it. Categories picked by hand stay put.
-  if (toNumber(r.v, 0) < 6 && oldAmex && !out.amex.some(a => /subscri/i.test(a.n))) {
-    // ponytail: with 60 old categories this is a 61st, dropped by the 60 cap on the next load (crafted data only).
+  if (addSubs) {
     const subs = { id: ctx.uniqueId("subs"), n: "Subscriptions", p: 0 };
     out.amex.push(subs);
     out.buys.forEach(b => {
@@ -583,7 +585,7 @@ function migrate(raw) {
    registry so every amex category, purchase and bill ends up with a unique id. */
 function makeMigrationContext(r) {
   const scale = r.v >= 3 ? 1 : 100;
-  const usedIds = {};
+  const usedIds = {}, idMap = new Map();
   return {
     scale,
     money(value, fallback) {
@@ -600,15 +602,17 @@ function makeMigrationContext(r) {
       usedIds[id] = 1;
     },
     uniqueId(id) {
-      // ponytail: ids equal in their first 64 chars collide and the second's references fall to the first (crafted data only).
-      if (typeof id === "string") id = id.slice(0, 64);
-      if (typeof id !== "string" || !id || usedIds[id]) {
+      // An id over 64 characters gets a fresh one; remap() lets references to the old id find it.
+      const old = id;
+      if (typeof id !== "string" || !id || id.length > 64 || usedIds[id]) {
         id = uid();
         while (usedIds[id]) id = uid();
       }
       usedIds[id] = 1;
+      if (typeof old === "string" && old.length > 64 && !idMap.has(old)) idMap.set(old, id);
       return id;
     },
+    remap: id => (idMap.has(id) ? idMap.get(id) : id),
   };
 }
 
@@ -623,7 +627,7 @@ function migrateLines(r, ctx) {
 }
 
 function makePurchase(ctx, amex, id, date, pence, category, note, manual) {
-  if (typeof category === "string") category = category.slice(0, 64);
+  category = ctx.remap(category);
   return {
     id: ctx.uniqueId(id),
     date,

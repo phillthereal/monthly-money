@@ -1,3 +1,7 @@
 #!/bin/sh
-# Blocks a commit whose files contain personal data (see scripts/privacy-scan.js).
-exec node "$(git rev-parse --show-toplevel)/scripts/privacy-scan.js"
+# Refreshes the script hash in index.html's Content-Security-Policy (scripts/csp.js), then blocks a commit whose files
+# contain personal data (see scripts/privacy-scan.js).
+top=$(git rev-parse --show-toplevel)
+node "$top/scripts/csp.js" || exit 1
+git diff --cached --name-only | grep -qx index.html && git add "$top/index.html"
+exec node "$top/scripts/privacy-scan.js"
