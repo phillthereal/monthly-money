@@ -53,6 +53,33 @@ docs={[PATH]:S(312300,2000,{buys:many(2)})};
 a=boot(D(2026,11,3),{"money-tool-v1":JSON.stringify(S(100000,1000,{buys:many(12)}))},askSetup(docs,true));await wait(50);
 t("small remote: accept uses account copy",st(a.w).inc===312300&&st(a.w).buys.length===2);
 
+// Declining keeps the account's own purchases aside and sticks: the browser copy becomes newest and is uploaded.
+const remoteOnly=[{id:"r4173",date:"2026-11-01",pence:4173,category:"",note:"y"},{id:"r5191",date:"2026-11-02",pence:5191,category:"",note:"y"}];
+docs={[PATH]:S(312300,2000,{buys:remoteOnly})};
+a=boot(D(2026,11,3),{"money-tool-v1":JSON.stringify(S(100000,1000,{buys:many(12)}))},askSetup(docs,false));await wait(50);
+let kept=JSON.parse(a.w.localStorage.getItem("money-tool-prev")||"null");
+t("decline: remote-only purchases kept aside",kept&&kept.inc===312300&&["r4173","r5191"].every(id=>kept.buys.some(b=>b.id===id)),kept);
+t("decline sticks: local newest and remote equals local",st(a.w).lastSaved>2000&&JSON.stringify(docs[PATH])===JSON.stringify(st(a.w)),[st(a.w).lastSaved,docs[PATH].lastSaved]);
+t("download previous copy offered after a decline",$(a.w,"dlp").hidden===false&&$(a.w,"dlph").hidden===false);
+// Equal timestamps: in step, nothing replaced, written or kept.
+docs={[PATH]:S(312300,3000)};
+a=boot(D(2026,11,3),{"money-tool-v1":JSON.stringify(S(100000,3000)),"money-tool-prev":"{\"marker\":7}"},fakeClaude(docs));await wait(900);
+t("equal timestamps: nothing changes",a.w.localStorage.getItem("money-tool-prev")==="{\"marker\":7}"&&st(a.w).inc===100000&&docs[PATH].inc===312300&&/Claude account/.test($(a.w,"sync").textContent),[a.w.localStorage.getItem("money-tool-prev"),st(a.w).inc,docs[PATH].inc]);
+// Accepting keeps this browser's own purchases aside.
+docs={[PATH]:S(312300,2000,{buys:remoteOnly})};
+a=boot(D(2026,11,3),{"money-tool-v1":JSON.stringify(S(100000,1000,{buys:many(12)}))},askSetup(docs,true));await wait(50);
+kept=JSON.parse(a.w.localStorage.getItem("money-tool-prev")||"null");
+t("accept: local-only purchases kept aside",st(a.w).buys.length===2&&kept&&kept.buys.length===12&&kept.buys.some(b=>b.id==="b11"),kept&&kept.buys.length);
+// The button downloads the kept copy in the backup format, with "previous" in the name; hidden when nothing is kept.
+let file=null;
+a=boot(D(2026,11,3),{"money-tool-prev":JSON.stringify(S(4173,1000))},w=>{w.URL.createObjectURL=b=>{file={blob:b};return"blob:x"};w.URL.revokeObjectURL=()=>{};w.HTMLAnchorElement.prototype.click=function(){file.name=this.download}});await wait(50);
+t("download previous copy shown when a copy is kept",$(a.w,"dlp").hidden===false);
+click(a.w,$(a.w,"dlp"));await wait(20);
+const text=file&&await file.blob.text();
+t("previous copy downloads with previous in the name",file&&/^monthly-money-previous-2026-11-03\.json$/.test(file.name)&&JSON.parse(text).inc===4173,file&&file.name);
+a=boot(D(2026,11,3),{"money-tool-v1":JSON.stringify(S(100000,1000))});await wait(50);
+t("download previous copy hidden when nothing is kept",$(a.w,"dlp").hidden===true&&$(a.w,"dlph").hidden===true);
+
 a=boot(D(2026,11,3),{},fakeClaude({},{signedOut:true}));await wait(50);
 t("signed out: browser only",/not signed in/.test($(a.w,"sync").textContent));
 done("sync");

@@ -3,6 +3,6 @@
   "version": "5.0.0",
   "private": true,
   "description": "A single-file budgeting app for credit-card cycles, shared bills and savings goals. Your data stays in your browser.",
-  "scripts": { "test": "node tests/run.js", "prepare": "git config core.hooksPath .githooks || true" },
+  "scripts": { "test": "node tests/run.js", "prepare": "git config core.hooksPath .githooks || exit 0" },
   "devDependencies": { "jsdom": "^29.1.1" }
 }

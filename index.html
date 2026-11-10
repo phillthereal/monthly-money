@@ -208,7 +208,7 @@ button:not(:disabled):active{transform:scale(.97)}button{transition:transform .1
 <div class="sec"><h2>Trip fund</h2><div id="trip"></div></div>
 <div class="sec"><h2>0% card</h2><div class="row"><span>Balance owed £</span><input type="number" id="cardBal" inputmode="decimal" min="0" aria-label="Balance owed on the 0% card in £" style="margin-left:auto"></div><div class="row"><span>0% ends</span><input type="date" id="cardEnd" aria-label="Date the 0% ends" style="margin-left:auto;width:150px"></div><div id="cardout"></div></div>
 <div class="sec"><h2>Savings and investments</h2><div id="inv"></div><div id="invout"></div></div>
-<div class="sec"><h2>Backup</h2><div class="row bkr"><button id="dl">Download backup</button><button id="rf">Restore file</button><button id="exp">Copy backup</button><button id="imp">Paste backup</button><button id="reset" class="x">Reset</button></div><input type="file" id="fi" accept=".json,application/json" hidden><div class="mute" id="bk"></div><div class="mute"><span id="sync">Data lives in this browser only. Clearing site data wipes it.</span></div></div>
+<div class="sec"><h2>Backup</h2><div class="row bkr"><button id="dl">Download backup</button><button id="rf">Restore file</button><button id="exp">Copy backup</button><button id="imp">Paste backup</button><button id="dlp" hidden>Download previous copy</button><button id="reset" class="x">Reset</button></div><div class="mute" id="dlph" hidden>The copy this browser kept before the last restore or sync replace.</div><input type="file" id="fi" accept=".json,application/json" hidden><div class="mute" id="bk"></div><div class="mute"><span id="sync">Data lives in this browser only. Clearing site data wipes it.</span></div></div>
 </div></section>
 </main>
 <nav aria-label="Sections"><button data-tab="today"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>Today</button><button data-tab="budget"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h9"/></svg>Budget</button><button data-tab="amex"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2.5"/><path d="M3 10.5h18M6.5 15h3"/></svg>Amex</button><button data-tab="spending"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20v-7M10 20V6M15 20v-10M20 20v-5"/></svg>Spending</button><button data-tab="joint"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-6.5 8 6.5M6 9.5V19h12V9.5M10 19v-5h4v5"/></svg>Joint</button><button data-tab="goals"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 20.5V4M6 5h11l-2.5 3.5L17 12H6"/></svg>Goals</button></nav>
@@ -527,6 +527,7 @@ function migrate(raw) {
   // v6 adds a Subscriptions category once (never again if it is removed later); imported purchases from
   // subscription shops outside locked cycles move into it. Categories picked by hand stay put.
   if (toNumber(r.v, 0) < 6 && oldAmex && !out.amex.some(a => /subscri/i.test(a.n))) {
+    // ponytail: with 60 old categories this is a 61st, dropped by the 60 cap on the next load (crafted data only).
     const subs = { id: ctx.uniqueId("subs"), n: "Subscriptions", p: 0 };
     out.amex.push(subs);
     out.buys.forEach(b => {
@@ -592,11 +593,14 @@ function makeMigrationContext(r) {
     obj: x => (x && typeof x === "object" && !Array.isArray(x) ? x : {}),
     // Sizes are capped (truncated, not rejected) so a crafted backup cannot make the lists huge.
     list: (x, max = 500) => (Array.isArray(x) ? x.filter(i => i && typeof i === "object").slice(0, max) : null),
+    // Purchases, the legacy log and history are stored oldest-first: past the cap keep the newest.
+    recent: (x, max) => (Array.isArray(x) ? x.filter(i => i && typeof i === "object").slice(-max) : null),
     str: (x, fallback) => (typeof x === "string" ? x.slice(0, 80) : fallback),
     claimId(id) {
       usedIds[id] = 1;
     },
     uniqueId(id) {
+      // ponytail: ids equal in their first 64 chars collide and the second's references fall to the first (crafted data only).
       if (typeof id === "string") id = id.slice(0, 64);
       if (typeof id !== "string" || !id || usedIds[id]) {
         id = uid();
@@ -632,7 +636,7 @@ function makePurchase(ctx, amex, id, date, pence, category, note, manual) {
 
 /* v3+: purchases are already pence; drop invalid dates and zero amounts. */
 function migrateBuys(r, amex, ctx) {
-  return (ctx.list(r.buys, 20000) || [])
+  return (ctx.recent(r.buys, 20000) || [])
     .filter(b => validDate(b.date) && toNumber(b.pence, 0) !== 0)
     .map(b => {
       const note = typeof b.id === "string" && b.id.startsWith("amex-") ? shopName(b.note) : b.note;
@@ -645,7 +649,7 @@ function migrateLegacyLog(cy, oldAmex, amex, ctx) {
   const buys = [];
   const today = todayIso();
   let logged = 0;
-  (ctx.list(cy.log, 20000) || [])
+  (ctx.recent(cy.log, 20000) || [])
     .filter(x => validDate(x.d) && isFinite(toNumber(x.a, NaN)))
     .forEach(x => {
       const pence = Math.round(toNumber(x.a, 0) * 100);
@@ -670,11 +674,11 @@ function migrateLegacyLog(cy, oldAmex, amex, ctx) {
 /* Legacy (v1/v2) history rows have no cycle key or categories and come in locked. */
 function migrateHistory(r, ctx) {
   const current = ctx.scale === 1;
-  return (ctx.list(r.hist, 240) || [])
+  return (ctx.recent(r.hist, 240) || [])
     .filter(h => typeof h.m === "string")
     .map(h => ({
       k: validDate(h.k) ? h.k : "",
-      m: h.m,
+      m: h.m.slice(0, 80),
       plan: ctx.money(h.plan, 0),
       spent: ctx.money(h.spent, 0),
       cats: current ? (ctx.list(h.cats, 60) || []).map(x => ({ n: ctx.str(x.n, ""), s: ctx.money(x.s, 0), p: ctx.money(x.p, 0) })) : [],
@@ -754,20 +758,29 @@ async function connectClaudeSync() {
   try {
     const snap = await ref.get();
     const remote = snap.exists ? migrate(snap.data()) : null;
-    // Compare with when this browser's copy was last edited, not with saves made while booting.
-    const wins = remote && remote.lastSaved >= loadedSavedAt;
-    const tooSmall = wins && state.buys.length >= 10 && remote.buys.length * 2 < state.buys.length &&
-      !(await ask("The copy in your Claude account has far fewer purchases than this browser (" + remote.buys.length + " vs " + state.buys.length + "). Use it anyway?", "Use account copy"));
-    if (wins && !tooSmall) {
-      keepPrevious();
-      remote.tab = state.tab;
-      state = remote;
-      try {
-        localStorage.setItem(STORE_KEY, JSON.stringify(state));
-      } catch (_) {}
-      syncInputs();
-      render(true);
-    } else {
+    // Compare with when this browser's copy was last edited, not with saves made while booting. Equal: already in step,
+    // unless this browser never saved (0), which counts as older. Whichever copy gets replaced is kept under PREV_KEY first.
+    const notKept = "Not synced with your Claude account: couldn't keep a copy first. Saved in this browser.";
+    if (remote && (remote.lastSaved > loadedSavedAt || !loadedSavedAt)) {
+      const tooSmall = state.buys.length >= 10 && remote.buys.length * 2 < state.buys.length &&
+        !(await ask("The copy in your Claude account has far fewer purchases than this browser (" + remote.buys.length + " vs " + state.buys.length + "). Use it anyway?", "Use account copy"));
+      if (!tooSmall) {
+        // Kept after any question, so edits made while it was open are in the kept copy.
+        if (!keepPrevious() && !(await ask("Couldn't keep a copy of this browser's data first. Use the account copy anyway?", "Use account copy"))) return setSyncStatus(notKept);
+        remote.tab = state.tab;
+        state = remote;
+        try {
+          localStorage.setItem(STORE_KEY, JSON.stringify(state));
+        } catch (_) {}
+        syncInputs();
+        render(true);
+      } else {
+        // Declined: keep the account copy aside, then make this browser's copy the newest so the choice sticks.
+        if (!keepPrevious(remote) && !(await ask("Couldn't keep a copy of the account data first. Replace it with this browser's copy anyway?", "Replace account copy"))) return setSyncStatus(notKept);
+        save();
+        await ref.set(clone(state));
+      }
+    } else if (!remote || remote.lastSaved < loadedSavedAt) {
       await ref.set(clone(state));
     }
     remoteRef = ref;
@@ -777,10 +790,11 @@ async function connectClaudeSync() {
   }
 }
 
-/* Copy the current state aside before it is replaced. Returns false if that failed. */
-function keepPrevious() {
+/* Copy the current state (or the copy about to be overwritten) aside before it is replaced. Returns false if that failed. */
+function keepPrevious(copy = state) {
   try {
-    localStorage.setItem(PREV_KEY, JSON.stringify(state));
+    localStorage.setItem(PREV_KEY, JSON.stringify(copy));
+    renderBackupStatus();
     return true;
   } catch (e) {
     return false;
@@ -818,10 +832,15 @@ function exportJSON() {
   return JSON.stringify(state);
 }
 
-async function downloadBackup() {
-  const json = exportJSON();
+/* previous: the copy kept under PREV_KEY instead of the current data, same format, "previous" in the name. */
+async function downloadBackup(previous) {
+  let json = "";
+  try {
+    json = previous ? localStorage.getItem(PREV_KEY) : exportJSON();
+  } catch (_) {}
+  if (!json) return;
   const d = new Date();
-  const filename = "monthly-money-" + d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()) + ".json";
+  const filename = "monthly-money-" + (previous ? "previous-" : "") + d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()) + ".json";
   const downloads = window.claude && window.claude.use ? await window.claude.use("downloads") : null;
   if (downloads) {
     try {
@@ -1077,7 +1096,7 @@ function amexCharges(text) {
    Amex pads the merchant to 23 characters before the town ("DELIVEROO        LONDON"), refs follow a "*"
    ("AMZNMKTPLACE*XY12AB34C") and store numbers mix in digits ("TESCO STORE 1234 1234TE"). */
 function shopName(raw) {
-  let s = String(raw || "");
+  let s = String(raw || "").replace(/\p{Cf}/gu, "");
   const gap = s.search(/\s{2,}/);
   if (gap > 0) s = s.slice(0, gap);
   else if (s.length > 24 && s[23] === " ") s = s.slice(0, 23);
@@ -1086,7 +1105,6 @@ function shopName(raw) {
     .split(/\s+/)
     .filter(w => !(w.length >= 4 && /\d/.test(w)))
     .join(" ")
-    .replace(/\p{Cf}/gu, "")
     .trim()
     .slice(0, 60);
 }
@@ -1292,6 +1310,11 @@ function renderBackupStatus() {
   const days = last ? Math.max(0, Math.floor((Date.now() - last) / DAY_MS)) : -1;
   el.textContent = days < 0 ? "No backup yet" : "Last backup " + (days < 1 ? "today" : days === 1 ? "1 day ago" : days + " days ago");
   el.className = "mute" + (days < 0 || days > 14 ? " amb" : "");
+  let kept = false;
+  try {
+    kept = !!localStorage.getItem(PREV_KEY);
+  } catch (_) {}
+  $("dlp").hidden = $("dlph").hidden = !kept;
 }
 
 /* ---- Today tab ---------------------------------------------------------- */
@@ -1410,7 +1433,7 @@ function renderBudgetLines() {
 function budgetLineRow(line, i) {
   const roleOptions = ROLES.map(r => `<option value="${r}"${line.r === r ? " selected" : ""}>${ROLE_NAMES[r]}</option>`).join("");
   return `<div class="ln bl"><button class="dotb" data-dot="${i}" aria-label="Move to ${GROUP_NAMES[NEXT_GROUP[line.g]]}" style="--c:${GROUP_COLOURS[line.g]}"></button>`
-    + `<input type="text" value="${esc(line.n)}" data-i="${i}" data-f="n" aria-label="Name"><div class="sub"><small data-pc="${i}"></small><select class="rs" data-i="${i}" data-f="r" aria-label="Role">${roleOptions}</select></div>`
+    + `<input type="text" value="${esc(line.n)}" data-i="${i}" data-f="n" maxlength="80" aria-label="Name"><div class="sub"><small data-pc="${i}"></small><select class="rs" data-i="${i}" data-f="r" aria-label="Role">${roleOptions}</select></div>`
     + `<span class="amt"><span class="cur">£</span><input type="number" inputmode="decimal" value="${fromPence(line.a)}" data-i="${i}" data-f="a" aria-label="Amount"></span><button class="x" data-del="${i}" aria-label="Delete">${X_ICON}</button></div>`;
 }
 
@@ -1481,7 +1504,7 @@ function renderSorter() {
 
 function renderAmexCategories() {
   $("amex").innerHTML = state.amex
-    .map((l, i) => `<div class="row"><i class="dot" style="background:${seriesColour(state.amex, l.id)};flex:none" aria-hidden="true"></i><input type="text" value="${esc(l.n)}" data-j="${i}" data-f="n" aria-label="Category name" style="padding-left:8px;padding-right:8px"><input type="number" inputmode="decimal" value="${fromPence(l.p)}" data-j="${i}" data-f="p" aria-label="Planned" style="flex:none;width:64px"><span class="cs" data-cs="${esc(l.id)}"></span><button class="x" style="margin-right:-12px" data-ad="${i}" aria-label="Remove category">${X_ICON}</button></div>`)
+    .map((l, i) => `<div class="row"><i class="dot" style="background:${seriesColour(state.amex, l.id)};flex:none" aria-hidden="true"></i><input type="text" value="${esc(l.n)}" data-j="${i}" data-f="n" maxlength="80" aria-label="Category name" style="padding-left:8px;padding-right:8px"><input type="number" inputmode="decimal" value="${fromPence(l.p)}" data-j="${i}" data-f="p" aria-label="Planned" style="flex:none;width:64px"><span class="cs" data-cs="${esc(l.id)}"></span><button class="x" style="margin-right:-12px" data-ad="${i}" aria-label="Remove category">${X_ICON}</button></div>`)
     .join("")
     + `<div class="row" data-cr style="display:none"><i class="dot" style="background:var(--s0);flex:none" aria-hidden="true"></i><span class="mute" style="flex:1">Unassigned and adjustments</span><span class="cs" data-cs=""></span><span style="width:32px;flex:none"></span></div>`;
 }
@@ -1525,7 +1548,7 @@ function renderJoint(full) {
 
 function renderJointBills() {
   $("jbills").innerHTML = state.joint.bills
-    .map((b, i) => `<div class="ln"><div class="nm"><input type="text" value="${esc(b.n)}" data-b="${i}" data-f="n" aria-label="Bill name"><small data-js="${i}"></small></div>`
+    .map((b, i) => `<div class="ln"><div class="nm"><input type="text" value="${esc(b.n)}" data-b="${i}" data-f="n" maxlength="80" aria-label="Bill name"><small data-js="${i}"></small></div>`
       // The £ prefix is CSS generated content (.pf::before) so the tab's visible text is unchanged.
       + `<span class="pf"><input type="number" inputmode="decimal" value="${twoDp(b.a)}" data-b="${i}" data-f="a" aria-label="Total per month in £"></span><button class="x" data-bd="${i}" aria-label="Delete bill">${X_ICON}</button></div>`)
     .join("");
@@ -2128,11 +2151,18 @@ async function importAmexCsv(texts) {
   const have = new Set(state.buys.map(b => b.id));
   const add = [];
   let dupes = 0, locked = 0;
+  // Shop -> latest hand-picked category, built once (the same answer guessCategory's backwards scan gives;
+  // imported charges are never hand-picked, so they don't teach).
+  const learned = new Map();
+  for (const b of state.buys) {
+    const key = merchantKey(b.note);
+    if (b.manual && key && state.amex.some(a => a.id === b.category)) learned.set(key, b.category);
+  }
   for (const c of parsed.charges) {
     if (have.has(c.id)) dupes++;
     else if (c.date > today || isLockedOn(state.hist, state.cy.day, c.date)) locked++;
     else {
-      c.category = guessCategory(state.amex, state.buys.concat(add), c.note, c.hint);
+      c.category = learned.get(merchantKey(c.note)) || guessCategory(state.amex, [], c.note, c.hint);
       delete c.hint;
       add.push(c);
       have.add(c.id); // the same charge in two overlapping files
@@ -2159,7 +2189,7 @@ async function importAmexCsv(texts) {
   const sortedNote = monthNote + "\n" + sorted + " of them sorted into categories" + (sorted < add.length ? "; the rest are unassigned." : ".");
   const before = state;
   if (!(await ask("Add " + add.length + " purchases totalling " + gbpp(total) + "?" + sortedNote + skipped, "Add")) || state !== before) return;
-  state.buys.push(...add);
+  for (const c of add) state.buys.push(c);
   save();
   render(false);
 }
@@ -2314,6 +2344,7 @@ async function onClick(e) {
   else if (t.id === "jadd") changeAndRebuild(() => state.joint.bills.push({ id: uid(), n: "New bill", a: 0 }));
   else if (ds.bd !== undefined) withUndo("Bill", () => changeAndRebuild(() => state.joint.bills.splice(ds.bd, 1)));
   else if (t.id === "dl") downloadBackup();
+  else if (t.id === "dlp") downloadBackup(true);
   else if (t.id === "exp") copyBackup(t);
   else if (t.id === "rf") $("fi").click();
   else if (t.id === "csv") $("fc").click();

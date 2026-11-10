@@ -33,7 +33,7 @@ const amount = (pence, from) => {
 
 const sources = [];
 const terms = read(path.join(root, "tests/private-terms.txt"));
-if (terms) { sources.push("private words"); lines(terms).forEach(w => phrase(w, "private words", 1)); }
+if (terms) { sources.push("private words"); lines(terms).filter(w => !w.startsWith("#")).forEach(w => phrase(w, "private words", 3)); }
 
 const backup = read(path.join(root, "my-starter-backup.json"));
 if (backup) {

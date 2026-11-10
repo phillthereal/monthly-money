@@ -126,5 +126,13 @@ t("multi-file: finished month gets a history row",st(a.w).hist.some(h=>h.k==="20
 a.w.__alerts=[];await imp(a.w,[SEP,"not,a,csv"]);
 t("multi-file: a wrong file stops the lot",/One of those files/.test(a.w.__alerts.join())&&st(a.w).buys.length===3);
 t("shopName strips invisible format characters",sn("Caf\u200Be\u202E Nine")==="Cafe Nine",JSON.stringify(sn("Caf\u200Be\u202E Nine")));
+// A big import (3000 rows) finishes and sorts exactly as a small one: a taught shop, a keyword shop, an unknown shop.
+{const big=V6({amex:[{id:"food",n:"Food",p:20000},{id:"fun",n:"Going out",p:5000}],buys:[{id:"t1",date:"2026-10-20",pence:4173,category:"fun",note:"ZEBRA CAFE",manual:true}]});
+ const shops=["ZEBRA CAFE","TESCO STORES","QUORBIX LTD"];
+ const rows=n=>"Date,Description,Amount\n"+Array.from({length:n},(_,i)=>(19+i%3)+"/10/2026,"+shops[i%3]+","+(1+i/100).toFixed(2)).join("\n")+"\n";
+ const run=async n=>{const b=boot(D(2026,10,22),{"money-tool-v1":big});b.w.confirm=()=>true;await imp(b.w,rows(n));return st(b.w).buys.slice(1).map(x=>x.note+"="+x.category)};
+ const small=await run(3),t0=Date.now(),large=await run(3000);
+ t("small import sorts by teaching and keywords",small.join("|")==="ZEBRA CAFE=fun|TESCO STORES=food|QUORBIX LTD=",small);
+ t("3000-row import finishes with the same categories",large.length===3000&&large.every((x,i)=>x===small[i%3]),[large.length,Date.now()-t0]);}
 done("csv");
 })();

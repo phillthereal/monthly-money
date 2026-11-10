@@ -1,9 +1,15 @@
 #!/bin/sh
 # Scans every commit about to be pushed, not just the latest, so history can't carry personal data out.
+# Never passes unscanned: if the range can't be worked out, everything not already on a remote is scanned;
+# if git itself fails, the push is blocked.
 zero=0000000000000000000000000000000000000000
 while read lref lsha rref rsha; do
   [ "$lsha" = "$zero" ] && continue
-  if [ "$rsha" = "$zero" ]; then range=$(git rev-list "$lsha" --not --remotes); else range=$(git rev-list "$rsha..$lsha"); fi
+  range=""
+  [ "$rsha" != "$zero" ] && range=$(git rev-list "$rsha..$lsha" 2>/dev/null)
+  if [ -z "$range" ] && ! git branch -r --contains "$lsha" 2>/dev/null | grep -q .; then
+    range=$(git rev-list "$lsha" --not --remotes) || exit 1
+  fi
   [ -n "$range" ] && { node "$(git rev-parse --show-toplevel)/scripts/privacy-scan.js" $range || exit 1; }
 done
 exit 0

@@ -109,6 +109,15 @@ t("markup escaped: no img element made",z.errs.length===0&&!z.w.document.querySe
  lines=Array.from({length:300},(_,i)=>({n:long,a:100,g:"Spend",r:"none"})),
  big=boot(D(2026,11,3),{"money-tool-v1":JSON.stringify({v:6,inc:1000,lines,amex:cats,buys:[{id:"i".repeat(300),date:"2026-11-02",pence:100,category:"c1",note:long}],hist:[],lastSaved:5})});
  const g=st(big.w);
- t("oversized state is capped",big.errs.length===0&&g.lines.length===200&&g.amex.length<=61&&g.lines[0].n.length===80&&g.buys[0].id.length===64&&g.buys[0].note.length<=60,big.errs.concat([g.lines.length,g.amex.length]));}
+ t("oversized state is capped",big.errs.length===0&&g.lines.length===200&&g.amex.length===60&&g.amex[0].id==="c0"&&g.lines[0].n.length===80&&g.buys[0].id.length===64&&g.buys[0].note.length<=60,big.errs.concat([g.lines.length,g.amex.length]));
+ // Purchases and history are oldest-first: past the cap the newest are kept. History labels are cut to 80.
+ const mig=big.w.eval("migrate"),many=Array.from({length:20003},(_,i)=>({id:"p"+i,date:"2026-11-02",pence:417,category:"",note:""}));
+ const hist=Array.from({length:243},(_,i)=>({k:"2026-01-19",m:"m"+i+long,plan:1,spent:1,cats:[],locked:true}));
+ const m=mig({v:6,inc:1000,lines:[],buys:many,hist,lastSaved:5});
+ t("purchases keep the newest 20000",m.buys.length===20000&&m.buys[0].id==="p3"&&m.buys[19999].id==="p20002",[m.buys.length,m.buys[0].id]);
+ t("history keeps the newest 240, labels cut to 80",m.hist.length===240&&m.hist[0].m.startsWith("m3n")&&m.hist[239].m.startsWith("m242n")&&m.hist.every(h=>h.m.length===80),[m.hist.length,m.hist[0].m.length]);
+ const log=Array.from({length:20003},(_,i)=>({d:"2026-11-0"+(1+i%2),a:i===20002?7.31:1}));
+ const lg=mig({v:2,inc:1000,lines:[],cy:{log},lastSaved:5});
+ t("legacy log keeps the newest 20000",lg.buys.length===20000&&lg.buys[19999].pence===731,lg.buys.length);}
 done("core");
 })();
